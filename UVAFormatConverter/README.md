@@ -9,8 +9,9 @@ This conversion is based off of the CCDEF standard, found [here](https://conduit
 - No mapping included in current conversion
 - Continuous vitals are placed in *VitalSigns* root-level group, rather than *Numerics*
 
-## Known bugs
+## Known issues
 
 This software is continually revised to update for new libraries and patch bugs. The current bugs under development are:
 
 - No support for FLAC compression when converting from WFDB
+- Non-standard attributes (metadata) when converting from different formats
