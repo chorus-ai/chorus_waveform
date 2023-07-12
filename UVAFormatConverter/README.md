@@ -4,14 +4,14 @@ This directory contains versions of the Universal File Converter maintained by U
 
 ## Usage
 
-The included formatconverter.exe is a prebuilt version, compiled for Windows. It accepts the command line arguments as specified in the documentation, though I typically only use flags from the following subset for most applications:
+The included formatconverter.exe is a prebuilt version, compiled for Windows. It accepts the command line arguments as specified in the documentation, though typically only flags from the following subset are used for most applications:
  
 - -f or --from [input_filetype]
 - -t or --to hdf5 
 - -n or --no-break (no break, produces a single file, default is split by day at midnight)
 - -p or --pattern [outputpattern] (structured according to documentation)
  
-When doing deidentification, I use the following:
+When doing deidentification, the following are helpful:
  
 - --offset [integeroffset] (This shifts the entire time vector, rather than taking a subset)
 - -a or --anonymize (I believe this attempts to remove any input filename duplication inside the file as the filename often contains MRNs or datetimes- I don’t think it looks for other PHI)
