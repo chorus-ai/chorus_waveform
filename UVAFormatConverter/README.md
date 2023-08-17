@@ -26,7 +26,7 @@ This example command takes in the file “inputfolder/inputfilename.xml” (in t
 ### Environment
 The prebuilt version is compiled for Windows and runs with only the included libraries. On the [original documentation](https://github.com/Ostrich-Emulators/PreVent#usingbuilding), there are instructions for both compiling on Linux and running with Docker as well as the dependency list, though I haven’t tested either. 
 ### Sample Files and Scripts
-I am working on deidentified examples - check back later.
+The subfolder "WFDBWaveformExample" demonstrates the conversion of WFDB-format files to HDF5 using the UVA Converter and the resulting structure of the converted HDF5 file. This provides a waveform-only example, though the differences between waveform and vital formatting are small (mostly different metadata attributes). Similarly, while there are differences between WFDB and STP conversion, the converted file is largely the same. Thus, this example serves as a demonstration of UVA-CCDEF format. To run using STP XML instead of WFDB, the "-f WFDB" argument is replaced with "-f stpxml".
 ### Imputation
 No imputation is being performed during conversion. Unlike a continuous segment format (i.e. wfdb), the produced data can have gaps, as well as large segments of NaNs/Missing Value Markers. Responsibility for handling these is generally assumed to fall to the end user, who can determine the optimal imputation algorithm for their application.
 
