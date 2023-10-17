@@ -183,7 +183,7 @@ f.close()
 ```
 
 
-### 6. Organizing Data in Groups:
+#### 6. Organizing Data in Groups:
 
 In HDF5, you can organize datasets within groups, similar to directories in a filesystem. Here's how you can create the "Numerics", "Waveforms", and "Clinical" groups:
 
@@ -204,7 +204,7 @@ clinical_group = f.create_group("Clinical")
 f.close()
 ```
 
-### 7. Adding Channels to the Waveforms Group:
+#### 7. Adding Channels to the Waveforms Group:
 
 To add channels to the "Waveforms" group:
 
@@ -223,7 +223,7 @@ for channel in channels:
 f.close()
 ```
 
-### 8. Optimizing Numerics Channel Structure:
+#### 8. Optimizing Numerics Channel Structure:
 
 Here's how you can optimize the structure of channels in the "Numerics" group:
 
