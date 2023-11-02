@@ -10,7 +10,7 @@ CHoRUS waveform specification and various conversion scripts for the CHoRUS proj
 6. [License](#license)
 7. [Acknowledgements](#acknowledgements)
 
----
+
 
 ## Documentation
 
@@ -85,7 +85,6 @@ In progress...
 </details>
 
 
----
 
 
 ## Installation
@@ -98,7 +97,6 @@ pip install h5py
 ```
 
 
----
 
 ## How to Use
 
