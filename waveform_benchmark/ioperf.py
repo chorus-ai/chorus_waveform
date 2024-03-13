@@ -47,6 +47,9 @@ class PerformanceCounter:
             with _nocache_lock:
                 _nocache_enabled.add(self)
 
+        if self._clear_cache and not _nocache_supported:
+            self.n_bytes_read = math.nan
+
         # Run strace to track system calls.
         try:
             self._strace = subprocess.Popen(['strace', '-c', '-f',
@@ -107,25 +110,29 @@ class PerformanceCounter:
                              - self._rusage_children.ru_stime)
 
 
-def _nocache_hook(event, args):
-    global _nocache_loop
-    if event == 'open' and not _nocache_loop:
-        with _nocache_lock:
-            if _nocache_enabled and isinstance(args[0], (str, bytes)):
-                _nocache_loop = True
-                fd = None
-                try:
-                    fd = os.open(args[0], os.O_RDONLY | os.O_CLOEXEC)
-                    os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
-                except OSError:
-                    pass
-                finally:
-                    if fd is not None:
-                        os.close(fd)
-                    _nocache_loop = False
-
-
 _nocache_lock = threading.Lock()
+_nocache_supported = False
 _nocache_enabled = set()
 _nocache_loop = False
-sys.addaudithook(_nocache_hook)
+
+if hasattr(os, 'posix_fadvise') and hasattr(os, 'POSIX_FADV_DONTNEED'):
+    _nocache_supported = True
+
+    def _nocache_hook(event, args):
+        global _nocache_loop
+        if event == 'open' and not _nocache_loop:
+            with _nocache_lock:
+                if _nocache_enabled and isinstance(args[0], (str, bytes)):
+                    _nocache_loop = True
+                    fd = None
+                    try:
+                        fd = os.open(args[0], os.O_RDONLY | os.O_CLOEXEC)
+                        os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+                    except OSError:
+                        pass
+                    finally:
+                        if fd is not None:
+                            os.close(fd)
+                        _nocache_loop = False
+
+    sys.addaudithook(_nocache_hook)
