@@ -89,7 +89,7 @@ def run_benchmarks(input_record, format_class):
                         fmt().read_waveforms(path, t0, t1, all_channels)
                 counters.append(pc)
 
-            print('%6d %6d %8.0f %8.4f  %6s read %d x %.0fs, all channels'
+            print('%6.0f %6.0f %8.0f %8.4f  %6s read %d x %.0fs, all channels'
                   % (median_attr(counters, 'n_seek_calls'),
                      median_attr(counters, 'n_read_calls'),
                      median_attr(counters, 'n_bytes_read') / 1024,
@@ -110,7 +110,7 @@ def run_benchmarks(input_record, format_class):
                         fmt().read_waveforms(path, t0, t1, [c])
                 counters.append(pc)
 
-            print('%6d %6d %8.0f %8.4f  %6s read %d x %.0fs, one channel'
+            print('%6.0f %6.0f %8.0f %8.4f  %6s read %d x %.0fs, one channel'
                   % (median_attr(counters, 'n_seek_calls'),
                      median_attr(counters, 'n_read_calls'),
                      median_attr(counters, 'n_bytes_read') / 1024,
