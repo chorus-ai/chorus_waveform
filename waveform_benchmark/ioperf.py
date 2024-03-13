@@ -1,3 +1,4 @@
+import math
 import os
 import re
 import resource
@@ -47,16 +48,21 @@ class PerformanceCounter:
                 _nocache_enabled.add(self)
 
         # Run strace to track system calls.
-        self._strace = subprocess.Popen(['strace', '-c', '-f',
-                                         '-U', 'name,calls',
-                                         '-e', 'lseek,read',
-                                         '-p', str(os.getpid())],
-                                        stdout=subprocess.PIPE,
-                                        stderr=subprocess.STDOUT)
-        # Wait for strace to attach to the current process.  (Subtract
-        # one from n_read_calls because this counts as one.)
-        self._strace.stdout.readline()
-        self.n_read_calls -= 1
+        try:
+            self._strace = subprocess.Popen(['strace', '-c', '-f',
+                                             '-U', 'name,calls',
+                                             '-e', 'lseek,read',
+                                             '-p', str(os.getpid())],
+                                            stdout=subprocess.PIPE,
+                                            stderr=subprocess.STDOUT)
+            # Wait for strace to attach to the current process.  (Subtract
+            # one from n_read_calls because this counts as one.)
+            self._strace.stdout.readline()
+            self.n_read_calls -= 1
+        except FileNotFoundError:
+            self._strace = None
+            self.n_read_calls = math.nan
+            self.n_seek_calls = math.nan
 
         # Measure past resource usage for this process and any children.
         self._rusage_self = resource.getrusage(resource.RUSAGE_SELF)
@@ -73,14 +79,15 @@ class PerformanceCounter:
             _nocache_enabled.discard(self)
 
         # Stop the strace process and read its output.
-        self._strace.send_signal(signal.SIGINT)
-        strace_data, _ = self._strace.communicate()
-        for m in re.finditer(rb'^\s*(\w+)\s+(\d+)\s*$',
-                             strace_data, re.MULTILINE):
-            if m.group(1) == b'read':
-                self.n_read_calls += int(m.group(2))
-            elif m.group(1) == b'lseek':
-                self.n_seek_calls += int(m.group(2))
+        if self._strace is not None:
+            self._strace.send_signal(signal.SIGINT)
+            strace_data, _ = self._strace.communicate()
+            for m in re.finditer(rb'^\s*(\w+)\s+(\d+)\s*$',
+                                 strace_data, re.MULTILINE):
+                if m.group(1) == b'read':
+                    self.n_read_calls += int(m.group(2))
+                elif m.group(1) == b'lseek':
+                    self.n_seek_calls += int(m.group(2))
 
         # Calculate number of bytes read.  ru_inblock is always
         # measured in 512-byte blocks regardless of I/O block size.
