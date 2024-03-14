@@ -43,8 +43,8 @@ def load_wfdb_signals(record_name, pn_dir=None, start=None, end=None):
             chunk = {
                 'start_time': start_frame / layout.fs,
                 'end_time': end_frame / layout.fs,
-                'start_sample': start_frame * layout.samps_per_frame[i],
-                'end_sample': end_frame * layout.samps_per_frame[i],
+                'start_sample': start_frame * seg.samps_per_frame[i],
+                'end_sample': end_frame * seg.samps_per_frame[i],
                 'gain': seg.adc_gain[i],
                 'samples': seg.e_p_signal[i],
             }
