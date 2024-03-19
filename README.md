@@ -6,9 +6,10 @@ CHoRUS waveform specification and various conversion scripts for the CHoRUS proj
 2. [Installation](#installation)
 3. [How to Use](#how-to-use)
 4. [Tools](#tools)
-5. [Contributing](#contributing)
-6. [License](#license)
-7. [Acknowledgements](#acknowledgements)
+5. [Benchmarking](#benchmarking)
+6. [Contributing](#contributing)
+7. [License](#license)
+8. [Acknowledgements](#acknowledgements)
 
 
 
@@ -256,12 +257,14 @@ for channel in numeric_channels:
 f.close()
 ```
 
-
 ## Tools
   
   ### [UVA Converter](https://github.com/chorus-ai/waveform/tree/main/UVAFormatConverter)
   Converts between a variety of formats, including inputs of Bedmaster STP XML, wfdb, tdms, dwc, and existing HDF5. Vitals can be specified as a CSV if not included in waveform file. See UVAFormatConverter folder for more detailed information.
-  
+
+## Benchmarking
+
+This repository includes a script for benchmarking different waveform formats. For guidelines on using the script, see [BENCHMARK.md](./BENCHMARK.md).
 
 ## Contributing
 
