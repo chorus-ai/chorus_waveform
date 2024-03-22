@@ -12,10 +12,10 @@ The [waveform_benchmark.py](./waveform_benchmark.py) script is the entrypoint fo
 ./waveform_benchmark.py <PATH_TO_RECORD> <PATH_TO_BENCHMARK_CLASS>
 ```
 
-For example, to run the `WFDBFormat516` benchmark on a record named `data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648.hea`:
+For example, to run the `WFDBFormat516` benchmark on a record named `data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648`:
 
 ```
-python ./waveform_benchmark.py ./data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648.hea waveform_benchmark.formats.wfdb.WFDBFormat516
+./waveform_benchmark.py ./data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648 waveform_benchmark.formats.wfdb.WFDBFormat516
 ```
 
 An example output is provided below:
