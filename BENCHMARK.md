@@ -12,36 +12,35 @@ The [waveform_benchmark.py](./waveform_benchmark.py) script is the entrypoint fo
 ./waveform_benchmark.py <PATH_TO_RECORD> <PATH_TO_BENCHMARK_CLASS>
 ```
 
-For example, to run the `WFDBFormat16` benchmark on a record named `tests/data/100`:
+For example, to run the `WFDBFormat516` benchmark on a record named `data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648`:
 
 ```
-./waveform_benchmark.py ./tests/data/100 waveform_benchmark.formats.wfdb.WFDBFormat16
+./waveform_benchmark.py ./data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648 waveform_benchmark.formats.wfdb.WFDBFormat516
 ```
 
 An example output is provided below:
 
 ```
 ________________________________________________________________
-Format: waveform_benchmark.formats.wfdb.WFDBFormat16
-         (WFDB with 16-bit binary storage)
-Record: tests/data/100
-         116147 seconds x 4 channels
-         58073460 timepoints, 28425000 samples (48.9%)
+Format: waveform_benchmark.formats.wfdb.WFDBFormat516
+         (WFDB with FLAC compression)
+Record: ./data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648
+         214981 seconds x 6 channels
+         255177600 timepoints, 199126720 samples (78.0%)
 ________________________________________________________________
-Output size:    11775 KiB (3.39 bits/sample)
-Time to output: 18 sec
+Output size:    70744 KiB (2.91 bits/sample)
+Time to output: 68 sec
 ________________________________________________________________
 Read performance (median of N trials):
  #seek  #read      KiB      sec     [N]
-  1780   1563    11784   1.0967     [9] read 1 x 116147s, all channels
-   300    136     1904   0.0636   [111] read 5 x 500s, all channels
-  2371    908     8880   0.3640    [19] read 50 x 50s, all channels
- 25298   9315    70216   3.4233     [3] read 500 x 5s, all channels
-  1780   1563    11784   0.8176    [12] read 1 x 116147s, one channel
-   260    115     1556   0.0532   [123] read 5 x 500s, one channel
-  2478    934     9432   0.3775    [19] read 50 x 50s, one channel
- 27080   9915    70004   3.5648     [3] read 500 x 5s, one channel
-________________________________________________________________
+  9981   9139    70768   8.2069     [3] read 1 x 214981s, all channels
+   632    277     4212   0.1335    [58] read 5 x 500s, all channels
+  5286   1744    19388   0.5585    [12] read 50 x 50s, all channels
+ 51188  16448   147048   4.6264     [3] read 500 x 5s, all channels
+  6846   6359    49496   6.0602     [3] read 1 x 214981s, one channel
+   240    123     1668   0.0714   [110] read 5 x 500s, one channel
+  1902    738     7616   0.2974    [24] read 50 x 50s, one channel
+ 18932   7061    53596   2.5504     [3] read 500 x 5s, one channel
 ```
 
 ## Adding a new format to the benchmarks
