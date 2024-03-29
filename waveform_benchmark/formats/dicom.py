@@ -347,7 +347,6 @@ class BaseDICOMFormat(BaseFormat):
                 chunk_end_sample = np.round((chunk_end_t - start_t) * float(multiplex_group.SamplingFrequency))
                 global_end_sample = global_start_sample + chunk_end_sample
             
-            
             arr = np.frombuffer(cast(bytes, multiplex_group.WaveformData), dtype=dtype)[chunk_start_sample:chunk_end_sample, :].astype(np.float32)
             for i, channel_def in enumerate(multiplex_group.ChannelDefinitionSequence):
                 name = channel_def.ChannelSourceSequence[0].CodeMeaning
@@ -355,19 +354,23 @@ class BaseDICOMFormat(BaseFormat):
                     continue
 
                 if name not in results.keys():
-                    results[name] = {}
-                    results[name]['chunks'] = []
+                    # results[name] = {}
+                    # results[name]['chunks'] = []
+                    results[name] = []
 
                 unit = channel_def.ChannelSensitivityUnitsSequence[0].CodeValue
                 gain = 1.0 / channel_def.ChannelSensitivityCorrectionFactor
-                results[name]['units'] = unit
-                results[name]['samples_per_second'] = multiplex_group.SamplingFrequency
+                # results[name]['units'] = unit
+                # results[name]['samples_per_second'] = multiplex_group.SamplingFrequency
                 arr_i = arr[:, i] * float(channel_def.ChannelSensitivityCorrectionFactor)
-                chunk = {'start_time': chunk_start_t, 'end_time': chunk_end_t, 
-                                             'start_sample': global_start_sample, 'end_sample': global_end_sample,
-                                             'gain': gain, 'samples': arr_i}
-                results[name]['chunks'].append(chunk)
-        
+                # chunk = {'start_time': chunk_start_t, 'end_time': chunk_end_t, 
+                #                              'start_sample': global_start_sample, 'end_sample': global_end_sample,
+                #                              'gain': gain, 'samples': arr_i}
+                # results[name]['chunks'].append(chunk)
+                results[name].append(arr_i)
+                
+        for name in results.key():
+            results[name] = np.concatenate(results[name])
 
         return results
 
