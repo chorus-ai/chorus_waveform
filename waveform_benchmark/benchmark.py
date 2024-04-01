@@ -5,6 +5,7 @@ import os
 import random
 import tempfile
 import time
+import numpy as np
 
 from waveform_benchmark.input import load_wfdb_signals
 from waveform_benchmark.ioperf import PerformanceCounter
@@ -74,6 +75,56 @@ def run_benchmarks(input_record, format_class):
         print('Output size:    %.0f KiB (%.2f bits/sample)'
               % (output_size / 1024, output_size * 8 / actual_samples))
         print('Time to output: %.0f sec' % pc_write.cpu_seconds)
+        print('_' * 64)
+
+        # Fidelity Check
+        # Loop over each waveform
+        print("Fidelity check:")
+        print()
+        print("Chunk\t\t Numeric Samples\t\t  NaN Samples")
+        print(f"\t# Errors  /  Total\t{'% Eq':^8}\tNaN Values Match")
+
+        for channel,waveform in waveforms.items():
+            print(f"Signal: {channel}")
+            # Loop over chunks
+            # print("Chunk\t\t Numeric Samples\t\t  NaN Samples")
+            # print(f"\t# Errors  /  Total\t{'% Eq':^8}\tNaN Values Match")
+
+            for i_ch, chunk in enumerate(waveform["chunks"]):
+                st = chunk["start_time"]
+                et = chunk["end_time"]
+                data = chunk["samples"]
+
+                # read chunk from file
+                filedata = fmt().read_waveforms(path, st, et, [channel])
+
+                # compare values
+
+                # check for nans in correct location
+                NANdiff = np.sum(np.isnan(data) != np.isnan(filedata[channel]))
+                numnan = np.sum(np.isnan(data))
+                numnanstr = f"{'N' if NANdiff else 'Y'} ({numnan})"
+                
+                # remove nans for equality check
+                data_nonan = data[~np.isnan(data)]
+                filedata_nonan = filedata[channel][~np.isnan(data)]
+
+                # use numpy's isclose to determine floating point equality
+                isgood = np.isclose(filedata_nonan,data_nonan)
+                numgood = np.sum(isgood)
+                fpeq_rel = numgood/len(data_nonan)
+                
+                # print to table
+                print(f"{i_ch:^5}\t{len(data_nonan)-numgood:10}/{len(data_nonan):10}\t{fpeq_rel*100:^6.3f}\t\t{numnanstr:^16}")
+
+                # print up to 10 bad values if not all equal
+                if numgood != len(data_nonan):
+                    print("Subset of unuequal numeric data from input:")
+                    print(data_nonan[~isgood][:10])
+                    print("Subset of unuequal numeric data from formatted file:")
+                    print(filedata_nonan[~isgood][:10])
+                    print(f"(Gain: {chunk['gain']})")
+            # print('_' * 64)
         print('_' * 64)
         print('Read performance (median of N trials):')
         print(' #seek  #read      KiB      sec     [N]')
