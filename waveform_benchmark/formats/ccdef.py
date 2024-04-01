@@ -33,32 +33,30 @@ class CCDEF(BaseFormat):
             f.create_group("Waveforms")
             # loop over channels
             for channel,datadict in waveforms.items():
-                # print(channel)
-                # print(datadict)
                 # loop over chunks
                 chunks = datadict["chunks"]
                 # concat data
                 sig_length = chunks[-1]['end_sample']
                 sig_samples = np.empty(sig_length, dtype=np.short)
-                sig_samples[:] = -32768
+                nanval = -32768
+                sig_samples[:] = nanval
                 # todo: store time as segments of sample, starttime, length
                 for chunk in chunks:
-                    # print("------------------")
-                    # print(f"{chunk['start_time']} {chunk['start_sample']}")
-                    # print(f"{chunk['end_time']} {chunk['end_sample']}")
-                    # print(chunk["gain"])
-                    # print(chunk['end_sample'] - chunk['start_sample'])
-                    # print(len(chunk["samples"]))
                     start = chunk['start_sample']
                     end = chunk['end_sample']
-                    sig_samples[start:end] = np.round(chunk['samples']*chunk["gain"])
+
+                    cursamples = np.where(np.isnan(chunk['samples']), (nanval*1.0)/chunk["gain"], chunk['samples'])
+                    sig_samples[start:end] = np.round(cursamples*chunk["gain"])
 
 
-                f["Waveforms"].create_dataset(channel,data=sig_samples,compression="gzip", compression_opts=6, shuffle=True)
+                if self.fmt == "Compressed":
+                    f["Waveforms"].create_dataset(channel,data=sig_samples,compression="gzip", compression_opts=6, shuffle=True)
+                else:
+                    f["Waveforms"].create_dataset(channel,data=sig_samples)
                 
                 f["Waveforms"][channel].attrs["uom"] = datadict["units"]
                 f["Waveforms"][channel].attrs["sample_rate"] = datadict["samples_per_second"]
-                f["Waveforms"][channel].attrs["nanvalue"] = -32768
+                f["Waveforms"][channel].attrs["nanvalue"] = nanval
                 f["Waveforms"][channel].attrs["gain"] = chunks[0]["gain"]
                 f["Waveforms"][channel].attrs["start_time"] = chunks[0]["start_time"]
 
@@ -70,8 +68,8 @@ class CCDEF(BaseFormat):
             for channel in signal_names:
                 sample_rate = f["Waveforms"][channel].attrs["sample_rate"]
                 channelstarttime = f["Waveforms"][channel].attrs["start_time"]
-                start_frame = round((start_time - channelstarttime) * sample_rate)
-                end_frame = round((end_time-channelstarttime) * sample_rate)
+                start_frame = round((start_time) * sample_rate)
+                end_frame = round((end_time) * sample_rate)
 
                 sig_data = f["Waveforms"][channel][start_frame:end_frame] 
                 naninds = (sig_data == f["Waveforms"][channel].attrs["nanvalue"])
@@ -81,3 +79,9 @@ class CCDEF(BaseFormat):
 
 
         return results
+
+class CCDEF_Compressed(CCDEF):
+    fmt = 'Compressed'
+
+class CCDEF_Uncompressed(CCDEF):
+    fmt = 'Uncompressed'
