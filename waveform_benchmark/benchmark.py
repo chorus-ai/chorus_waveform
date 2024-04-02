@@ -97,17 +97,23 @@ def run_benchmarks(input_record, format_class):
 
                 # read chunk from file
                 filedata = fmt().read_waveforms(path, st, et, [channel])
-
+                filedata = filedata[channel]
+                
                 # compare values
 
+                # check arrays are same size
+                if data.shape != filedata.shape:
+                    print(f"{i_ch:^5}\t --- Different shapes (input: {data.shape}, file: {filedata.shape}) ---")
+                    continue
+
                 # check for nans in correct location
-                NANdiff = np.sum(np.isnan(data) != np.isnan(filedata[channel]))
+                NANdiff = np.sum(np.isnan(data) != np.isnan(filedata))
                 numnan = np.sum(np.isnan(data))
                 numnanstr = f"{'N' if NANdiff else 'Y'} ({numnan})"
                 
                 # remove nans for equality check
                 data_nonan = data[~np.isnan(data)]
-                filedata_nonan = filedata[channel][~np.isnan(data)]
+                filedata_nonan = filedata[~np.isnan(data)]
 
                 # use numpy's isclose to determine floating point equality
                 isgood = np.isclose(filedata_nonan,data_nonan)
