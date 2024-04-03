@@ -51,25 +51,6 @@ from waveform_benchmark.formats.base import BaseFormat
 # MultichannelRespiratoryWaveform: RESP, >1, , unconstrained, DCID 3005 “Respiration Waveform” , SS/SL
 # 
 
-# waveform lead names to dicom IOD mapping.   Incomplete.
-CHANNEL_TO_DICOM_SPEC = {
-    "I": {'IOD': 'General32BitECG', 'Modality': 'ECG', 'value': '5.6.3-9-1', 'meaning': 'Lead I (Einthoven)'},
-    "II": {'IOD': 'General32BitECG', 'Modality': 'ECG', 'value': '5.6.3-9-2', 'meaning': 'Lead II'},
-    "III": {'IOD': 'General32BitECG', 'Modality': 'ECG', 'value': '5.6.3-9-61', 'meaning': 'Lead III'},
-    "V": {'IOD': 'General32BitECG', 'Modality': 'ECG', 'value': '5.6.3-9-3', 'meaning': 'Lead V1'},
-    "aVR": {'IOD': 'General32BitECG', 'Modality': 'ECG', 'value': '5.6.3-9-62', 'meaning': 'Lead aVR'},
-    "Pleth": {'IOD': 'ArterialPulseWaveform', 'Modality': 'HD', 'value': '5.6.3-9-00', 'meaning': 'Plethysmogram'},  # these are not ECG  pulse oxymeter
-    "Resp": {'IOD': 'RespiratoryWaveform', 'Modality': 'RESP', 'value': '5.6.3-9-01', 'meaning': 'Respiration'}
-}
-
-UCUM_ENCODING = {
-    "mV": "millivolt",
-    "bpm": "beats per minute",
-    "mmHg": "millimeter of mercury",
-    "uV": "microvolt",
-    "NU": "number",
-    "Ohm": "ohm"
-}
 
 # IMPORTANT: look at the specification constraints for different types of waveforms.
 
@@ -97,6 +78,29 @@ class BaseDICOMFormat(BaseFormat):
     """
     Abstract class for WFDB signal formats.
     """
+
+    # waveform lead names to dicom IOD mapping.   Incomplete.
+    # avoiding 12 lead ECG because of the limit in number of samples.
+    CHANNEL_TO_DICOM_SPEC = {
+        "I": {'IOD': 'General32BitECG', 'Modality': 'ECG', 'value': '5.6.3-9-1', 'meaning': 'Lead I (Einthoven)'},
+        "II": {'IOD': 'General32BitECG', 'Modality': 'ECG', 'value': '5.6.3-9-2', 'meaning': 'Lead II'},
+        "III": {'IOD': 'General32BitECG', 'Modality': 'ECG', 'value': '5.6.3-9-61', 'meaning': 'Lead III'},
+        "V": {'IOD': 'General32BitECG', 'Modality': 'ECG', 'value': '5.6.3-9-3', 'meaning': 'Lead V1'},
+        "aVR": {'IOD': 'General32BitECG', 'Modality': 'ECG', 'value': '5.6.3-9-62', 'meaning': 'Lead aVR'},
+        "Pleth": {'IOD': 'ArterialPulseWaveform', 'Modality': 'HD', 'value': '5.6.3-9-00', 'meaning': 'Plethysmogram'},  # these are not ECG  pulse oxymeter
+        "Resp": {'IOD': 'RespiratoryWaveform', 'Modality': 'RESP', 'value': '5.6.3-9-01', 'meaning': 'Respiration'}
+    }
+
+    UCUM_ENCODING = {
+        "mV": "millivolt",
+        "bpm": "beats per minute",
+        "mmHg": "millimeter of mercury",
+        "uV": "microvolt",
+        "NU": "number",
+        "Ohm": "ohm"
+    }
+
+
 
     # Currently, this class uses a single segment and stores many
     # signals in one signal file.  Using multiple segments and
@@ -230,7 +234,7 @@ class BaseDICOMFormat(BaseFormat):
     def create_multiplexed_chunk(self, waveforms: dict, channel_chunk: dict):
         
         for channel in channel_chunk.keys():
-            if channel not in CHANNEL_TO_DICOM_SPEC.keys():
+            if channel not in self.CHANNEL_TO_DICOM_SPEC.keys():
                 raise ValueError("Channel not in CHANNEL_TO_DICOM_SPEC")
         
         # verify that all chunks are in bound
@@ -318,7 +322,7 @@ class BaseDICOMFormat(BaseFormat):
                 
             
             # this needs a look up from a controlled vocab.  This is not correct here..
-            source.CodeValue = CHANNEL_TO_DICOM_SPEC[channel]['value']
+            source.CodeValue = self.CHANNEL_TO_DICOM_SPEC[channel]['value']
             source.CodingSchemeDesignator = "SCPECG"
             source.CodingSchemeVersion = "1.3"
             source.CodeMeaning = channel
@@ -331,7 +335,7 @@ class BaseDICOMFormat(BaseFormat):
             units.CodeValue = unit
             units.CodingSchemeDesignator = "UCUM"
             units.CodingSchemeVersion = "1.4"
-            units.CodeMeaning = UCUM_ENCODING[unit]  # this needs to be fixed.
+            units.CodeMeaning = self.UCUM_ENCODING[unit]  # this needs to be fixed.
                 
             # multiplier to apply to the encoded value to get back the orginal input.
             ds = str(1.0 / float(chunk['gain']))
@@ -484,33 +488,47 @@ class BaseDICOMFormat(BaseFormat):
     def read_waveforms(self, path, start_time, end_time, signal_names):
         # have to read the whole data set each time if using dcmread.  this is not efficient.
         
-        # t1 = time.time()
+        requested_channels = set(signal_names)
+        
+        t1 = time.time()
         dicom = dcmread(path, defer_size = 32)
-        # t2 = time.time()
+        t2 = time.time()
         # print("Read time", t2 - t1)
         
         results = { name: [] for name in signal_names }
         dtype = WAVEFORM_DTYPES[(self.WaveformBitsAllocated, self.WaveformSampleInterpretation)]
         
+        labels = []
         for multiplex_group in dicom.WaveformSequence:
             # check match by channel name, start and end time
             
-            nchannels = multiplex_group.NumberOfWaveformChannels
-            nsamples = multiplex_group.NumberOfWaveformSamples
+            t1 = time.time()
+            group_channels = set([channel_def.ChannelSourceSequence[0].CodeMeaning for channel_def in multiplex_group.ChannelDefinitionSequence ])
+            if (len(requested_channels.intersection(group_channels)) == 0):
+                # print("skipped due to channel:", group_channels, requested_channels)
+                continue
             
             start_t = multiplex_group.MultiplexGroupTimeOffset / 1000.0
             end_t = start_t + float(multiplex_group.NumberOfWaveformSamples) / float(multiplex_group.SamplingFrequency)
             
             if (start_t >= end_time) or (end_t <= start_time):
+                # print("skipped outside range", start_t, end_t, start_time, end_time)
                 continue
             
             # inbound.  compute the time:
             chunk_start_t = max(start_t, start_time)
             chunk_end_t = min(end_t, end_time)
             
-            # out of bounds.  so exclude.
-            if (chunk_start_t >= chunk_end_t):
-                continue
+            # # out of bounds.  so exclude.
+            # if (chunk_start_t >= chunk_end_t):
+            #     print("skipped 0 legnth group ", chunk_start_t, chunk_end_t)
+            #     continue
+            
+            correction_factors = [channel_def.ChannelSensitivityCorrectionFactor for channel_def in multiplex_group.ChannelDefinitionSequence]
+            
+            # now get the data
+            nchannels = multiplex_group.NumberOfWaveformChannels
+            nsamples = multiplex_group.NumberOfWaveformSamples
             
             # compute the global and chunk sample offsets.
             if (chunk_start_t == start_t):
@@ -526,14 +544,16 @@ class BaseDICOMFormat(BaseFormat):
                 chunk_end_sample = np.round((chunk_end_t - start_t) * float(multiplex_group.SamplingFrequency)).astype(int)
                 global_end_sample = global_start_sample + chunk_end_sample
             
-            # t1 = time.time()
+            t2 = time.time()
+            # print(multiplex_group.MultiplexGroupLabel, chunk_start_sample, chunk_end_sample, "metadata", t2 - t1)
+            
+            t1 = time.time()
             raw_arr = np.frombuffer(cast(bytes, multiplex_group.WaveformData), dtype=dtype).reshape([nsamples, nchannels])
-            # t2 = time.time()
-            # print("get raw_arr", t2 - t1)
+            t2 = time.time()
+            # print(multiplex_group.MultiplexGroupLabel, chunk_start_sample, chunk_end_sample, "get raw_arr", t2 - t1)
             
             # print(raw_arr.shape)
-            for i, channel_def in enumerate(multiplex_group.ChannelDefinitionSequence):
-                name = channel_def.ChannelSourceSequence[0].CodeMeaning
+            for i, name in enumerate(group_channels):
                 if name not in signal_names:
                     continue
 
@@ -546,12 +566,15 @@ class BaseDICOMFormat(BaseFormat):
                 # gain = 1.0 / channel_def.ChannelSensitivityCorrectionFactor
                 # results[name]['units'] = unit
                 # results[name]['samples_per_second'] = multiplex_group.SamplingFrequency
-                # t1 = time.time()
-                arr_i = raw_arr[chunk_start_sample:chunk_end_sample, i].astype(self.MemoryDataType, copy=False)             # out of bounds.  so exclude.)
-                arr_i[arr_i <= float(self.PaddingValue) ] = np.nan
-                arr_i = arr_i * float(channel_def.ChannelSensitivityCorrectionFactor)
-                # t2 = time.time()
-                # print("convert to float.", t2 - t1)
+                t1 = time.time()
+                mask = (raw_arr[chunk_start_sample:chunk_end_sample, i] == self.PaddingValue)
+                arr_i = raw_arr[chunk_start_sample:chunk_end_sample, i].astype(self.MemoryDataType, copy=False) * float(correction_factors[i])             # out of bounds.  so exclude.)
+                # arr_i = [ x * float(correction_factors[i]) for x in raw_arr[chunk_start_sample:chunk_end_sample, i] ]
+                arr_i[mask] = np.nan
+                # arr_i[arr_i <= float(self.PaddingValue) ] = np.nan
+                # arr_i = arr_i * float(correction_factors[i])
+                t2 = time.time()
+                # print("convert ", name, " to float.", t2 - t1, start_t, end_t, start_time, end_time)
                 
                 # chunk = {'start_time': chunk_start_t, 'end_time': chunk_end_t, 
                 #                              'start_sample': global_start_sample, 'end_sample': global_end_sample,
