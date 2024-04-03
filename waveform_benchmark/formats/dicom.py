@@ -481,7 +481,7 @@ class BaseDICOMFormat(BaseFormat):
         # Save DICOM file.  write_like_original is required
         dicom.save_as(path, write_like_original=False)
         
-        dicom.save_as("/mnt/c/Users/tcp19/Downloads/Compressed/test_waveform.dcm", write_like_original=False)
+        # dicom.save_as("/mnt/c/Users/tcp19/Downloads/Compressed/test_waveform.dcm", write_like_original=False)
 
         
     
