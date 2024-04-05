@@ -1,14 +1,15 @@
 import numpy as np
 import pyarrow as pa
+import pandas as pd
 import pyarrow.parquet as pq
 from collections import defaultdict
 from waveform_benchmark.formats.base import BaseFormat
 
 ROW_GROUP_SIZE_IN_SECONDS = 5
 
-class Parquet(BaseFormat):
+class Parquet_chunked(BaseFormat):
     """
-    Example format using Parquet.
+    Example format using Parquet with chunked signals with row group size.
     """
 
     def write_waveforms(self, path, waveforms):
@@ -35,7 +36,6 @@ class Parquet(BaseFormat):
                 b'samples_per_second': str(waveform["samples_per_second"]).encode()
             }
             
-            # Add metadata to table
             table = table.replace_schema_metadata(metadata)
             
              # Write to Parquet file with row group size based on ROW_GROUP_SIZE_IN_SECONDS
@@ -92,4 +92,71 @@ class Parquet(BaseFormat):
                 print(f"Error processing {signal_name}: {e}")
                 results[signal_name] = np.array([])
 
+        return results
+
+class Parquet_full(BaseFormat):
+    """
+    Example format using Parquet with continues signals.
+    """
+
+    def write_waveforms(self, path, waveforms):
+        for name, waveform in waveforms.items():
+            length = waveform['chunks'][-1]['end_sample']
+            samples = np.empty(length, dtype=np.float32)
+            samples[:] = np.nan
+            for chunk in waveform['chunks']:
+                start = chunk['start_sample']
+                end = chunk['end_sample']
+                samples[start:end] = chunk['samples']
+
+            df = pd.DataFrame({
+                'units': waveform['units'],
+                'samples_per_second': waveform['samples_per_second'],
+                'samples': samples
+            })
+            # Write each waveform as a separate parquet file.
+            df.to_parquet(f"{path}_{name}.parquet")
+
+    def read_waveforms(self, path, start_time, end_time, signal_names):
+        results = {}
+        for signal_name in signal_names:
+            df = pd.read_parquet(f"{path}_{signal_name}.parquet")
+            start_sample = round(start_time * df['samples_per_second'].iloc[0])
+            end_sample = round(end_time * df['samples_per_second'].iloc[0])
+
+            results[signal_name] = df['samples'][start_sample:end_sample].to_numpy()
+        return results
+    
+class Parquet_compressed(BaseFormat):
+    """
+    Example format using Parquet with compression.
+    """
+
+    def write_waveforms(self, path, waveforms):
+        # Convert each channel into a Pandas DataFrame with no gaps.
+        for name, waveform in waveforms.items():
+            length = waveform['chunks'][-1]['end_sample']
+            samples = np.empty(length, dtype=np.float32)
+            samples[:] = np.nan
+            for chunk in waveform['chunks']:
+                start = chunk['start_sample']
+                end = chunk['end_sample']
+                samples[start:end] = chunk['samples']
+
+            df = pd.DataFrame({
+                'units': waveform['units'],
+                'samples_per_second': waveform['samples_per_second'],
+                'samples': samples
+            })
+            # Write each waveform as a separate parquet file with compression.
+            df.to_parquet(f"{path}_{name}.parquet", compression='gzip')
+
+    def read_waveforms(self, path, start_time, end_time, signal_names):
+        results = {}
+        for signal_name in signal_names:
+            df = pd.read_parquet(f"{path}_{signal_name}.parquet")
+            start_sample = round(start_time * df['samples_per_second'].iloc[0])
+            end_sample = round(end_time * df['samples_per_second'].iloc[0])
+
+            results[signal_name] = df['samples'][start_sample:end_sample].to_numpy()
         return results
