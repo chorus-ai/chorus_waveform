@@ -1,11 +1,13 @@
 import numpy as np
 import pyarrow as pa
 import pandas as pd
+import pandas as pd
 import pyarrow.parquet as pq
 
 from waveform_benchmark.formats.base import BaseFormat
 
 ROW_GROUP_SIZE_IN_SECONDS = 500
+
 
 class Parquet(BaseFormat):
     """
@@ -34,12 +36,12 @@ class Parquet(BaseFormat):
                 b'units': waveform["units"].encode(),
                 b'samples_per_second': str(waveform["samples_per_second"]).encode()
             }
-            
+
+            # Add metadata to table
             table = table.replace_schema_metadata(metadata)
             
              # Write to Parquet file with row group size based on ROW_GROUP_SIZE_IN_SECONDS
             dynamic_row_group_size = round(waveform["samples_per_second"] * ROW_GROUP_SIZE_IN_SECONDS)
-            print('dynqmic row group size:', dynamic_row_group_size)
             file_name = f"{path}_{name}.parquet"
 
             if self.fmt == 'Compressed':
