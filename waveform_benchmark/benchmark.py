@@ -13,7 +13,7 @@ from waveform_benchmark.utils import repeat_test
 from waveform_benchmark.utils import median_attr
 
 
-def run_benchmarks(input_record, format_class):
+def run_benchmarks(input_record, format_class, pn_dir=None):
     # Load the class we will be testing
     module_name, class_name = format_class.rsplit('.', 1)
     module = importlib.import_module(module_name)
@@ -21,7 +21,7 @@ def run_benchmarks(input_record, format_class):
 
     # Load the example data
     input_record = input_record.removesuffix('.hea')
-    waveforms = load_wfdb_signals(input_record)
+    waveforms = load_wfdb_signals(input_record, pn_dir)
     all_channels = list(waveforms.keys())
 
     total_length = 0
