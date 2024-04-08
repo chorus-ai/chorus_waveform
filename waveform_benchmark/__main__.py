@@ -39,12 +39,13 @@ def main():
         waveform_suite = read_csv(opts.waveform_suite_table)
 
         for waveform_file in waveform_suite:
-            pn_dir = waveform_file[0]
-            record = waveform_file[1]
-            format = waveform_file[2]
+            record = waveform_file[0]
+            format = waveform_file[1]
+            pn_dir = waveform_file[2]
             run_benchmarks(input_record=record,
-                           pn_dir=pn_dir,
-                           format_class=format)
+                           format_class=format,
+                           pn_dir=pn_dir
+                           )
 
     # Run benchmarking against a single file
     else:
