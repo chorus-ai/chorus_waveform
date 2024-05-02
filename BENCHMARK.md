@@ -4,18 +4,18 @@
 
 The benchmarking script includes a simple set of metrics to evaluate the performance of waveform formats in Python. The benchmarks are intended to be run from the command line on Linux-systems only.
 
-## Running a benchmark
+## Running a benchmark on a single file
 
 The [waveform_benchmark.py](./waveform_benchmark.py) script is the entrypoint for running benchmarks. This script calls functions in the `waveform_benchmark` package. The syntax for running waveform_benchmark.py from the command line is: 
 
 ```
-./waveform_benchmark.py <PATH_TO_RECORD> <PATH_TO_BENCHMARK_CLASS>
+./waveform_benchmark.py -r <PATH_TO_RECORD> -f <PATH_TO_BENCHMARK_CLASS> -p <PHYSIONET_DATABASE_PATH>
 ```
 
-For example, to run the `WFDBFormat516` benchmark on a record named `data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648`:
+The `-p` argument can be used to pull a file directly from a PhysioNet database but isn't needed when running on a local file. For example, to run the `WFDBFormat516` benchmark on local record `data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648`:
 
 ```
-./waveform_benchmark.py ./data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648 waveform_benchmark.formats.wfdb.WFDBFormat516
+./waveform_benchmark.py -r ./data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648 -f waveform_benchmark.formats.wfdb.WFDBFormat516
 ```
 
 An example output is provided below:
@@ -41,6 +41,35 @@ Read performance (median of N trials):
    240    123     1668   0.0714   [110] read 5 x 500s, one channel
   1902    738     7616   0.2974    [24] read 50 x 50s, one channel
  18932   7061    53596   2.5504     [3] read 500 x 5s, one channel
+```
+
+Similarly, this file can be pulled directly from the MIMIC-IV Waveform PhysioNet database by running this:
+
+```
+./waveform_benchmark.py -r 85594648 -f waveform_benchmark.formats.wfdb.WFDBFormat516 -p mimic4wdb/0.1.0/waves/p100/p10079700/85594648/
+```
+
+## Running benchmarking on multiple files and formats
+
+To run benchmarking on multiple files and/or formats you need to pass a CSV control file by using the `-s` argument. The control file needs to start with a header like:
+
+`record,format,pn_dir`
+
+and be followed by rows which specify `record` and `format`. Adding a `<PHYSIONET_DATABASE_PATH>`, in the `pn_dir` column, is optional and will pull files directly from PhysioNet if provided. Here is an example of a CSV control file:
+
+```
+record,format,pn_dir
+charis1.hea,waveform_benchmark.formats.wfdb.WFDBFormat16,charisdb/1.0.0/
+charis1.hea,waveform_benchmark.formats.wfdb.WFDBFormat516,charisdb/1.0.0/
+84050536.hea,waveform_benchmark.formats.wfdb.WFDBFormat16,mimic4wdb/0.1.0/waves/p100/p10082591/84050536/
+85594648.hea,waveform_benchmark.formats.wfdb.WFDBFormat16,mimic4wdb/0.1.0/waves/p100/p10079700/85594648/
+```
+
+This pulls all files for this benchmarking run directly from PhysioNet databases. The first file `charis1` is run against the uncompressed and compressed WFDB formats (`WFDBFormat16` and `WFDBFormat516` respectively). The last two lines run two different files from the MIMIC-IV Waveform database against the uncompressed WFDB format.
+
+If our CSV file is `benchmark_files.csv`, we can run it with this command:
+```
+./waveform_benchmark.py -s benchmark_files.csv
 ```
 
 ## Adding a new format to the benchmarks

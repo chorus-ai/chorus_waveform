@@ -5,6 +5,7 @@ import os
 import random
 import tempfile
 import time
+import numpy as np
 
 from waveform_benchmark.input import load_wfdb_signals
 from waveform_benchmark.ioperf import PerformanceCounter
@@ -12,7 +13,7 @@ from waveform_benchmark.utils import repeat_test
 from waveform_benchmark.utils import median_attr
 
 
-def run_benchmarks(input_record, format_class):
+def run_benchmarks(input_record, format_class, pn_dir=None):
     # Load the class we will be testing
     module_name, class_name = format_class.rsplit('.', 1)
     module = importlib.import_module(module_name)
@@ -20,19 +21,38 @@ def run_benchmarks(input_record, format_class):
 
     # Load the example data
     input_record = input_record.removesuffix('.hea')
-    waveforms = load_wfdb_signals(input_record)
+    waveforms = load_wfdb_signals(input_record, pn_dir)
     all_channels = list(waveforms.keys())
 
     total_length = 0
     timepoints_per_second = 0
     actual_samples = 0
-    for waveform in waveforms.values():
+    waveform_characterizations = {}
+    for i, (name, waveform) in enumerate(waveforms.items()):
+        precise_channel_length = 0
         channel_length = waveform['chunks'][-1]['end_time']
         total_length = max(total_length, channel_length)
         timepoints_per_second += waveform['samples_per_second']
         actual_samples += sum(len(chunk['samples'])
                               for chunk in waveform['chunks'])
+
+        # Collect summary information about each channel in the waveform
+        inv_gain = 1/waveform['chunks'][-1]['gain']
+        res_rounded = f'{float(f"{inv_gain:.3g}"):g}'
+        resolution = f"{res_rounded}({waveforms[name]['units']})"
+        precise_channel_length += sum(chunk['end_time'] - chunk['start_time']
+                              for chunk in waveform['chunks'])
+        waveform_characterizations[name] = {
+        'fs': waveform['samples_per_second'],
+        'bit_resolution': resolution,
+        'channel_length': precise_channel_length
+        }
+
     total_timepoints = total_length * timepoints_per_second
+    if pn_dir:
+        record_name = os.path.join(pn_dir, input_record)
+    else:
+        record_name = input_record
 
     TEST_BLOCK_LENGTHS = [
         [total_length, 1],
@@ -50,12 +70,22 @@ def run_benchmarks(input_record, format_class):
         print('         (%s)'
               % fmt.__doc__.strip().splitlines()[0].rstrip('.'))
 
-    print('Record: %s' % input_record)
+    print('Record: %s' % record_name)
     print('         %.0f seconds x %d channels'
           % (total_length, len(all_channels)))
     print('         %d timepoints, %d samples (%.1f%%)'
           % (total_timepoints, actual_samples,
              100 * actual_samples / total_timepoints))
+    print('_' * 64)
+
+    # Print summary information for each waveform channel
+    print('Channel summary information:')
+    print(f" {'signal':<12} {'fs(Hz)':<10} {'Bit resolution':<20} {'Channel length(s)':<20}")
+    for (signal, values) in waveform_characterizations.items():
+        fs_value = f"{values['fs']:.2f}"
+        bit_resolution_value = values['bit_resolution']
+        channel_length_value = f"{values['channel_length']:.0f}"
+        print(f" {signal:<12} {fs_value:<10} {bit_resolution_value:<20} {channel_length_value:<20}")
     print('_' * 64)
 
     with tempfile.TemporaryDirectory(prefix='wavetest-', dir='.') as tempdir:
@@ -74,6 +104,62 @@ def run_benchmarks(input_record, format_class):
         print('Output size:    %.0f KiB (%.2f bits/sample)'
               % (output_size / 1024, output_size * 8 / actual_samples))
         print('Time to output: %.0f sec' % pc_write.cpu_seconds)
+        print('_' * 64)
+
+        # Fidelity Check
+        # Loop over each waveform
+        print("Fidelity check:")
+        print()
+        print("Chunk\t\t Numeric Samples\t\t  NaN Samples")
+        print(f"\t# Errors  /  Total\t{'% Eq':^8}\tNaN Values Match")
+
+        for channel,waveform in waveforms.items():
+            print(f"Signal: {channel}")
+            # Loop over chunks
+            # print("Chunk\t\t Numeric Samples\t\t  NaN Samples")
+            # print(f"\t# Errors  /  Total\t{'% Eq':^8}\tNaN Values Match")
+
+            for i_ch, chunk in enumerate(waveform["chunks"]):
+                st = chunk["start_time"]
+                et = chunk["end_time"]
+                data = chunk["samples"]
+
+                # read chunk from file
+                filedata = fmt().read_waveforms(path, st, et, [channel])
+                filedata = filedata[channel]
+                
+                # compare values
+
+                # check arrays are same size
+                if data.shape != filedata.shape:
+                    print(f"{i_ch:^5}\t --- Different shapes (input: {data.shape}, file: {filedata.shape}) ---")
+                    continue
+
+                # check for nans in correct location
+                NANdiff = np.sum(np.isnan(data) != np.isnan(filedata))
+                numnan = np.sum(np.isnan(data))
+                numnanstr = f"{'N' if NANdiff else 'Y'} ({numnan})"
+                
+                # remove nans for equality check
+                data_nonan = data[~np.isnan(data)]
+                filedata_nonan = filedata[~np.isnan(data)]
+
+                # use numpy's isclose to determine floating point equality
+                isgood = np.isclose(filedata_nonan,data_nonan)
+                numgood = np.sum(isgood)
+                fpeq_rel = numgood/len(data_nonan)
+                
+                # print to table
+                print(f"{i_ch:^5}\t{len(data_nonan)-numgood:10}/{len(data_nonan):10}\t{fpeq_rel*100:^6.3f}\t\t{numnanstr:^16}")
+
+                # print up to 10 bad values if not all equal
+                if numgood != len(data_nonan):
+                    print("Subset of unuequal numeric data from input:")
+                    print(data_nonan[~isgood][:10])
+                    print("Subset of unuequal numeric data from formatted file:")
+                    print(filedata_nonan[~isgood][:10])
+                    print(f"(Gain: {chunk['gain']})")
+            # print('_' * 64)
         print('_' * 64)
         print('Read performance (median of N trials):')
         print(' #seek  #read      KiB      sec     [N]')
