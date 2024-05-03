@@ -34,13 +34,15 @@ jobs:
         run: |
           git fetch origin main
           FILES=$(git diff --diff-filter=AM --name-only origin/main...HEAD 'waveform_benchmark/formats/*.py')
-          echo "Format files: $FILES"
-          echo "::set-output name=format_files::$FILES"
-
+          echo "Format files: $FILES" > format_files.txt
+          cat format_files.txt
+          
       - name: Run benchmark tests on new or modified format files
         if: steps.find-formats.outputs.format_files != ''
         run: |
-          IFS=' ' read -ra FILES <<< "${{ steps.find-formats.outputs.format_files }}"
+          FORMAT_FILES=$(cat format_files.txt)
+          IFS=' ' read -ra FILES <<< "$FORMAT_FILES"
+          RECORD_NAME="./data/waveforms/mimic_iv/waves/p169/p16955095/82284982/82284982"
           for file in "${FILES[@]}"
           do
             # Skip base.py file
@@ -60,8 +62,9 @@ jobs:
             for cls in "${CLS[@]}"
             do
               CLASS_PATH="$MODULE_PATH.$cls"
+              FILENAME="benchmark_results_${cls}.txt"
               echo "Benchmarking $CLASS_PATH"
-              ./waveform_benchmark.py -r ./data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648 -f "$CLASS_PATH" > "benchmark_results_${cls}.txt"
+              ./waveform_benchmark.py -r "$RECORD_NAME" -f "$CLASS_PATH" > "$FILENAME"
             done
           done
 
@@ -73,6 +76,7 @@ jobs:
           for file in "${FILES[@]}"
           do
             FORMAT_CLASS=$(echo "$file" | grep -oP 'formats/\K(.*)(?=\.py)')
+            echo "Processing file: $file"
             RESULTS+="$FORMAT_CLASS:\n$(cat "benchmark_results_$FORMAT_CLASS.txt")\n"
           done
           echo -e "Benchmark results:\n\`\`\`\n$RESULTS\n\`\`\`" > final_results.txt
