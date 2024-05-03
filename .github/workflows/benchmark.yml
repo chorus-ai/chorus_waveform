@@ -71,15 +71,9 @@ jobs:
       - name: Post results to pull request
         if: steps.find-formats.outputs.format_files != ''
         run: |
-          RESULTS=""
-          IFS=' ' read -ra FILES <<< "${{ steps.find-formats.outputs.format_files }}"
-          for file in "${FILES[@]}"
-          do
-            FORMAT_CLASS=$(echo "$file" | grep -oP 'formats/\K(.*)(?=\.py)')
-            echo "Processing file: $file"
-            RESULTS+="$FORMAT_CLASS:\n$(cat "benchmark_results_$FORMAT_CLASS.txt")\n"
-          done
-          echo -e "Benchmark results:\n\`\`\`\n$RESULTS\n\`\`\`" > final_results.txt
+          cat benchmark_results_*.txt > final_results.txt
+          echo "Benchmark results:"
+          cat final_results.txt
 
     #   - uses: unsplash/comment-on-pr@master
     #     if: steps.find-formats.outputs.format_files != ''
