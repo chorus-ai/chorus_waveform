@@ -90,6 +90,10 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            if [ ! -s final_results.txt ]; then
+              echo "No results to post."
+              exit 0
+            fi
             const fs = require('fs');
             const resultContent = fs.readFileSync('final_results.txt', 'utf8');
             await github.rest.issues.createComment({
