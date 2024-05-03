@@ -641,7 +641,7 @@ class DICOMFormat8(BaseDICOMFormat):
     MemoryDataType = np.float32
 
 
-class DICOMFormat8(BaseDICOMFormat):
+class DICOMFormat8_v2(BaseDICOMFormat):
     WaveformSampleInterpretation = 'SB'
     WaveformBitsAllocated = 8
     # respiratory, gneral audio, realtime audio, ambulatory ECG, arterial pulse
