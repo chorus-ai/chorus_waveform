@@ -52,6 +52,11 @@ jobs:
       - name: Copy .env.example to .env
         run: cp .env.example .env
 
+      - name: Update .env with JVM DLL Path
+        run: |
+          echo "export JPY_JVM_DLL='/opt/hostedtoolcache/Java_Adopt_jdk/11.0.23-9/x64/lib/server/libjvm.so'" >> .env
+          cat .env  # Optionally display the .env file to verify changes
+
       - name: Find new or modified benchmark files
         id: find-formats
         run: |
