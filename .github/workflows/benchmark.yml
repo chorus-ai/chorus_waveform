@@ -34,13 +34,16 @@ jobs:
         run: |
           git fetch origin main
           FILES=$(git diff --diff-filter=AM --name-only origin/main...HEAD 'waveform_benchmark/formats/*.py')
-          echo "Format files: $FILES" > format_files.txt
+          echo "$FILES" > format_files.txt
           cat format_files.txt
           
       - name: Run benchmark tests on new or modified format files
-        if: steps.find-formats.outputs.format_files != ''
         run: |
           FORMAT_FILES=$(cat format_files.txt)
+          if [ -z "$FORMAT_FILES" ]; then
+            echo "No format files found to process."
+            exit 0
+          fi
           IFS=' ' read -ra FILES <<< "$FORMAT_FILES"
           RECORD_NAME="./data/waveforms/mimic_iv/waves/p169/p16955095/82284982/82284982"
           for file in "${FILES[@]}"
@@ -69,7 +72,6 @@ jobs:
           done
 
       - name: Post results to pull request
-        if: steps.find-formats.outputs.format_files != ''
         run: |
           cat benchmark_results_*.txt > final_results.txt
           echo "Benchmark results:"
