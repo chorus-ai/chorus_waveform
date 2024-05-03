@@ -94,7 +94,9 @@ The module should be created at `./chorus_waveform/waveform_benchmark/formats/` 
 
 #### 3. Add a subclass of the [`BaseFormat`](./waveform_benchmark/formats/base.py).
 
-The class should be named `YourFormat(BaseFormat)` (e.g. `WFDBFormat(BaseFormat)`).
+The class should be named `YourFormat(BaseFormat)` (e.g. `WFDBFormat(BaseFormat)`). 
+
+If you are defining additional base classes that are not intended to be benchmarked directly, you should include `Base` at the start of the name (for example, "`BaseWFDBFormat`"). This allows us to slip the class in the [benchmark workflow](https://github.com/chorus-ai/chorus_waveform/blob/main/.github/workflows/benchmark.yml).
 
 #### 4. Add a `write_waveforms()` method.
 
