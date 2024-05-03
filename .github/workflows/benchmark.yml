@@ -23,11 +23,20 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'adopt'
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install flake8 pytest
           pip install -r requirements.txt
+
+      - name: Copy .env.example to .env
+        run: cp .env.example .env
 
       - name: Find new or modified benchmark files
         id: find-formats
