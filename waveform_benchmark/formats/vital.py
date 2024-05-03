@@ -1,38 +1,74 @@
-import os
 import numpy as np
 import vitaldb
 from waveform_benchmark.formats.base import BaseFormat
 
+class Device:
+    def __init__(self, name, typename='', port=''):
+        self.name = name
+        if not typename:
+            self.type = name
+        else:
+            self.type = typename
+        self.port = port
+
 class VitalFormat(BaseFormat):
     def write_waveforms(self, path, waveforms):
         vitalfile = vitaldb.VitalFile()
-        for name, waveform in waveforms.items():
+        vitalfile.dtstart = None
+        for channel, waveform in waveforms.items():
             recs = []
+            srate = waveform['samples_per_second']
+            gain = 0
+            mindisp = 9999
+            maxdisp = 0
             for chunk in waveform['chunks']:
-                if vitalfile.dtstart == 0 or vitalfile.dtstart > chunk['start_time']:
-                    vitalfile.dtstart = chunk['start_time']
-                if vitalfile.dtend < chunk['end_time']:
-                    vitalfile.dtend = chunk['end_time']
-                rec = {'dt': chunk['start_time']}
-                rec['val'] = chunk['samples']
-                recs.append(rec)
-            track = vitalfile.add_track(name, recs, waveform['samples_per_second'], waveform['units'])
-            track.gain = waveform['gain']
+                dtstart = chunk['start_time']
+                dtend = chunk['end_time']
+                if vitalfile.dtstart == None or vitalfile.dtstart > dtstart:
+                    vitalfile.dtstart = dtstart
+                vitalfile.dtend = max(vitalfile.dtend, dtend)
+                samples = chunk['samples']
+                for istart in range(chunk['start_sample'], chunk['end_sample'], int(srate)):
+                    recs.append({'dt': dtstart + istart / srate, 'val': samples[istart:istart+int(srate)]})
+                gain = max(gain, chunk['gain'])
+                mindisp = min(mindisp, np.nanmin(samples))
+                maxdisp = max(maxdisp, np.nanmax(samples))
+            track = vitalfile.add_track(dtname=channel + '/' + channel, recs=recs, srate=srate, unit=waveform['units'], mindisp=mindisp, maxdisp=maxdisp)
+            track.gain = gain
+            if channel not in vitalfile.devs:
+                vitalfile.devs[channel] = Device(channel)
         vitalfile.to_vital(path)
     def read_waveforms(self, path, start_time, end_time, signal_names):
+        signal_names = [x + '/' + x for x in signal_names]
         vitalfile = vitaldb.VitalFile(path, track_names=signal_names)
+        # results = {}
+        # for signal_name in signal_names:
+        #     trk = vitalfile.trks[signal_name]
+        #     vals = vitalfile.to_numpy(signal_name, 1/trk.srate)
+        #     signal_name = signal_name.split('/')[-1]
+        #     start_sample = round(start_time / trk.srate)
+        #     end_sample = round(end_time / trk.srate)
+        #     results[signal_name] = vals.flatten()[start_sample:end_sample]
         vitalfile.crop(start_time, end_time)
         results = {}
-        for trk in vitalfile.trks:
-            channel = {}
-            channel['units'] = trk.unit
-            channel['samples_per_second'] = trk.srate
-            channel['chunks'] = []
-            for rec in trk.recs:
-                chunk = {}
-                chunk['start_time'] = rec['dt']
-                chunk['end_time'] = rec['dt'] + (rec['val'].size / trk.srate)
-                chunk['samples'] = rec['val']
-                channel['chunks'].append(chunk)
-            results[trk.dtname] = channel
+        for dtname, trk in vitalfile.trks.items():
+            if dtname.find('/') >= 0:
+                dtname = dtname.split('/')[-1]
+            sample_length = round((end_time - start_time) * trk.srate)
+            samples = np.empty(sample_length, dtype=np.float32)
+            samples[:] = np.nan
+            for i, rec in enumerate(trk.recs):
+                dtstart = rec['dt']
+                dtend = rec['dt'] + len(rec['val']) / trk.srate
+                if dtstart > end_time:
+                    break
+                if i == 0 and start_time > dtstart:
+                    crop_start = round((start_time - dtstart) * trk.srate)
+                    rec['dt'] = start_time
+                    dtstart = start_time
+                    rec['val'] = rec['val'][crop_start:]        
+                st = round((dtstart - start_time) * trk.srate)
+                et = min(round((dtend - start_time) * trk.srate), sample_length)
+                samples[st:et] = rec['val'][:et-st]
+            results[dtname] = samples
         return results
