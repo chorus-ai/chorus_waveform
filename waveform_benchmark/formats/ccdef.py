@@ -9,7 +9,7 @@ import numpy as np
 from waveform_benchmark.formats.base import BaseFormat
 
 
-class CCDEF(BaseFormat):
+class BaseCCDEF(BaseFormat):
     """
     CCDEF signal format.
     """
@@ -96,14 +96,14 @@ class CCDEF(BaseFormat):
         return results
 
 
-class CCDEF_Compressed(CCDEF):
+class CCDEF_Compressed(BaseCCDEF):
     """
     CCDEF compressed format.
     """
     fmt = 'Compressed'
 
 
-class CCDEF_Uncompressed(CCDEF):
+class CCDEF_Uncompressed(BaseCCDEF):
     """
     CCDEF uncompressed format.
     """
