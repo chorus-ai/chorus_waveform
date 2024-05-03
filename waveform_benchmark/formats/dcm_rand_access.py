@@ -122,17 +122,7 @@ def deferred_data_element_generator(
         Yields DataElement for undefined length UN or SQ, RawDataElement
         otherwise.
     """
-    if child_defer_size is None:
-        print("NOTE: using pydiom data element generator")
-        yield pydicom.filereader.data_element_generator(
-            fp = fp,
-            is_implicit_VR = is_implicit_VR,
-            is_little_endian = is_little_endian,
-            stop_when = stop_when,
-            defer_size = defer_size,
-            encoding = encoding,
-            specific_tags = specific_tags
-        )
+
     # Summary of DICOM standard PS3.5-2008 chapter 7:
     # If Implicit VR, data element is:
     #    tag, 4-byte length, value.
@@ -559,9 +549,7 @@ def deferred_read_sequence_item(
 # %%
 # modified version of pydicom.filereader.read_deferred_data_element
 def partial_read_deferred_data_element(
-    fileobj_type: Any,
-    filename_or_obj: PathType | BinaryIO,
-    timestamp: float | None,
+    fp: BinaryIO,
     raw_data_elem: RawDataElement,
     child_defer_size: int | str | float | None = None,
 ) -> DataElement | RawDataElement:
@@ -602,43 +590,37 @@ def partial_read_deferred_data_element(
         If the VR or tag of `raw_data_elem` does not match the read value.
     """
     # if not deferring using pydicom's version.
-    if child_defer_size is None:
-        return pydicom.filereader.read_deferred_data_element(
-            fileobj_type = fileobj_type,
-            filename_or_obj = filename_or_obj,
-            timestamp = timestamp,
-            raw_data_elem = raw_data_elem
-        )
+    # if (child_defer_size is None) or (child_defer_size == 0):
+    #     print('using pydicom version of read_deferred_data_element')
+    #     return pydicom.filereader.read_deferred_data_element(
+    #         fileobj_type = type(fp),
+    #         filename_or_obj = fp,
+    #         timestamp = None,
+    #         raw_data_elem = raw_data_elem
+    #     )
     
     
     if config.debugging:
         logger.debug("Reading deferred element %r" % str(raw_data_elem.tag))
     # If it wasn't read from a file, then return an error
-    if filename_or_obj is None:
-        raise OSError("Deferred read -- original filename not stored. Cannot re-open")
+    if fp is None:
+        raise OSError("Deferred read -- fileobj BinaryIO missing")
 
-    # Check that the file is the same as when originally read
-    is_filename = isinstance(filename_or_obj, str)
-    if is_filename:
-        if not os.path.exists(filename_or_obj):
-            raise OSError(
-                f"Deferred read -- original file {filename_or_obj} is missing"
-            )
-
-        if timestamp is not None:
-            statinfo = os.stat(filename_or_obj)
-            if statinfo.st_mtime != timestamp:
-                logger.warn(
-                    "Deferred read warning -- file modification time has changed"
-                )
-
-    # Open the file, position to the right place
-    fp = fileobj_type(filename_or_obj, "rb") if is_filename else filename_or_obj
     is_implicit_VR = raw_data_elem.is_implicit_VR
     is_little_endian = raw_data_elem.is_little_endian
     offset = pydicom.filereader.data_element_offset_to_value(is_implicit_VR, raw_data_elem.VR)
     # Seek back to the start of the deferred element
     fp.seek(raw_data_elem.value_tell - offset)
+    # DO NOT USE THIS.  seems to generate a RawDataElement instead of a sequence when sequence is needed.  Value is loaded but is as byte array.  This is just too unpredictable.
+    # if child_defer_size is None:
+    #     print("NOTE: using pydiom data element generator")
+    #     elem_gen = pydicom.filereader.data_element_generator(
+    #         fp = fp,
+    #         is_implicit_VR = is_implicit_VR,
+    #         is_little_endian = is_little_endian,
+    #         defer_size = None,
+    #     )
+    # else:
     elem_gen = deferred_data_element_generator(
         fp = fp, 
         is_implicit_VR = is_implicit_VR, 
@@ -652,8 +634,6 @@ def partial_read_deferred_data_element(
     #   the deferred element == RawDataElement
     # elem = cast(RawDataElement, next(elem_gen))
     elem = next(elem_gen)
-    if is_filename:
-        fp.close()
     if (elem.VR != raw_data_elem.VR) and (raw_data_elem.VR is not None) and (raw_data_elem.VR != "UN"):
         raise ValueError(
             f"Deferred read VR {elem.VR} does not match original {raw_data_elem.VR}"
@@ -670,26 +650,16 @@ def partial_read_deferred_data_element(
 
 
 # random read from a byte array in the file
-def read_range(fileobj_type: Any, filename_or_obj: PathType | BinaryIO, 
+def read_range(fileobj: BinaryIO, 
                 data : RawDataElement, start: int, end: int,
                 ) -> bytes:
     """Read a chunk of bytes from the file at the specified offset."""
     # If it wasn't read from a file, then return an error
-    if filename_or_obj is None:
-        raise OSError("Deferred read -- original filename not stored. Cannot re-open")
+    if fileobj is None:
+        raise OSError("Deferred read -- fileobj BinaryIO is missing")
 
     # grab the bytes   ----------- open file
-    if isinstance(filename_or_obj, str):
-        if not os.path.exists(filename_or_obj):
-            raise OSError(
-                f"Deferred read -- original file {filename_or_obj} is missing"
-            )
-
-        with fileobj_type(filename_or_obj, "rb") as f:
-            f.seek(data.value_tell + start)
-            return f.read(end - start)
-    else:
-        filename_or_obj.seek(data.value_tell + start)
-        return filename_or_obj.read(end - start)
+    fileobj.seek(data.value_tell + start)
+    return fileobj.read(end - start)
     
 

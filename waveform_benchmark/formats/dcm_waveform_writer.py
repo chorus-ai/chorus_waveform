@@ -593,16 +593,20 @@ class DICOMWaveformWriter:
             # print("channel start ", start_src, end_src, start_target, end_target, duration)
             
             # QUANTIZE: and pad missing data
-            # values is in original type
-            values = np.nan_to_num(np.frombuffer(chunk['samples'][start_src:end_src], dtype=np.dtype(chunk['samples'].dtype)), 
-                                   nan = float(iod.VR.PaddingValue) / float(chunk['gain']) )
+            # values is in original type.  nan replaced with PaddingValue then will be multiplied by gain, so divide here to avoid overflow.
+            # values = np.nan_to_num(np.frombuffer(chunk['samples'][start_src:end_src], dtype=np.dtype(chunk['samples'].dtype)), 
+            #                        nan = float(iod.VR.PaddingValue) / float(chunk['gain']) )
+            v = np.frombuffer(chunk['samples'][start_src:end_src], dtype=np.dtype(chunk['samples'].dtype))
+            gain = float(chunk['gain'])
+            values = np.where(np.isnan(v), float(iod.VR.PaddingValue), v * gain)
             # print("chunk shape:", chunk['samples'].shape)
             # print("values shape: ", values.shape)
             # print("samples shape: ", samples.shape)
 
             chan_id = channels[channel]
             # write out in integer format
-            samples[chan_id][start_target:end_target] = np.round(values * float(chunk['gain']), decimals=0).astype(iod.VR.PythonDatatype)
+            # samples[chan_id][start_target:end_target] = np.round(values * float(chunk['gain']), decimals=0).astype(iod.VR.PythonDatatype)
+            samples[chan_id][start_target:end_target] = np.round(values, decimals=0).astype(iod.VR.PythonDatatype)
             
         # interleave the samples
         samplesT = np.transpose(samples)
@@ -638,7 +642,7 @@ class DICOMWaveformWriter:
             units.CodeMeaning = UCUM_ENCODING[unit]  # this needs to be fixed.
                 
             # multiplier to apply to the encoded value to get back the orginal input.
-            ds = str(1.0 / float(chunk['gain']))
+            ds = str(float(1.0) / float(chunk['gain']))
             chdef.ChannelSensitivityCorrectionFactor = ds if len(ds) <= 16 else ds[:16]
             chdef.ChannelBaseline = '0'
             chdef.WaveformBitsStored = iod.VR.WaveformBitsAllocated

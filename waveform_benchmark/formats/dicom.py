@@ -408,7 +408,7 @@ class BaseDICOMFormat(BaseFormat):
         
     def write_waveforms(self, path, waveforms):
         fs = FileSet()
-
+        
         # one series per modality
         # as many multiplexed groups as allowed by modality
         # one instance per chunk
@@ -420,12 +420,13 @@ class BaseDICOMFormat(BaseFormat):
         # import json
 
         # ======== organize the waveform chunks  (tested)
-        # print("INPUT", waveforms)
+        # print("INPUT pleth", waveforms['Pleth'])
+        # print("INPUT resp", waveforms['Resp'])
         channel_table = self.create_channel_table(waveforms)
         # print("TABLE: ", channel_table)
         subchunks1 = self.split_chunks_temporal_adaptive(channel_table)
-        print("ADAPTIVE", len(subchunks1))
-        self._pretty_print(subchunks1)
+        # print("ADAPTIVE", len(subchunks1))
+        # self._pretty_print(subchunks1)
         # subchunks1 = self.split_chunks_temporal_fixed(channel_table, duration_sec = 60000.0)
         # print("FIXED", len(subchunks1))
         # self._pretty_print(subchunks1)
@@ -438,7 +439,7 @@ class BaseDICOMFormat(BaseFormat):
         # the format of output of split-chunks
         # { (iod, group, file_id): {start_t, end_t, {(channel, chunk_id) : group, ...}}}
         for (iod_name, freq_id, file_id), chunk_info in subchunks1.items():
-            print("writing ", iod_name, ", ", file_id)
+            # print("writing ", iod_name, ", ", file_id)
             
             # create and iod instance
             iod = self.make_iod(iod_name)
@@ -470,7 +471,7 @@ class BaseDICOMFormat(BaseFormat):
         
         # fs.write('/mnt/c/Users/tcp19/Downloads/Compressed/test_waveform')
         # fs.copy(path)
-        print(path)
+        # print(path)
         fs.write(path)
         
     
@@ -496,26 +497,38 @@ class BaseDICOMFormat(BaseFormat):
         fileinfo = []
         for instance in fs:
             # print("Reading ", instance.path)
-            seqs = dcm_reader.get_waveform_sequences(open, instance.path)
-            
-            infos = dcm_reader.get_waveform_seq_info(open, instance.path, seqs)
-            for info in infos:
-                info['file'] = instance.path
-                info['end_time'] = np.round(float(info['start_time']) + float(info['number_samples']) / float(info['freq']), decimals=4)
-                fileinfo.append(info)
+            # open the file
+            with open(instance.path, 'rb') as fobj:
+                t3 = time.time()
+                ds = dcmread(fobj, defer_size = 100)
+                seqs_raw = dcm_reader.get_tag(fobj, ds, 'WaveformSequence', defer_size = 100)
+                
+                t4 = time.time()
+                d5 = t4 - t3
 
-        t2 = time.time()
-        d2 = t2 - t1
-        t1 = time.time()
+                t3 = time.time()
+                seqs = cast(list[Dataset], seqs_raw)
+                for idx, seq in enumerate(seqs):
+                    infos = dcm_reader.get_waveform_seq_info(fobj, seq)
+                    for info in infos:
+                        info['end_time'] = np.round(float(info['start_time']) + float(info['number_samples']) / float(info['freq']), decimals=4)
+                        if (info['channel'] in signal_names) and (info['start_time'] <= float(end_time)) and (info['end_time'] >= float(start_time)):
+                            info['group_idx'] = idx
+                            info['filename'] = instance.path
+                            fileinfo.append(info)
+                t4 = time.time()
+                d6 = t4 - t3
+                # print("read 1 file: ", d5, d6)
 
+                # TODO merge with wave reading later...
                 
         # create a dataframe
         df = pd.DataFrame(fileinfo)
         # -------- now extract the rows with matching channel namees
         # ------- and the rows overlapping with the target time window
-        df = df[(df['channel'].isin(signal_names)) &
-                (df['start_time'] <= float(end_time)) &
-                (df['end_time'] >= float(start_time))]
+        # df = df[(df['channel'].isin(signal_names)) &
+        #         (df['start_time'] <= float(end_time)) &
+        #         (df['end_time'] >= float(start_time))]
         # print("Seeking channels:  ", signal_names, " and times ", start_time, "-", end_time  )
         # print(df)  
         
@@ -528,57 +541,67 @@ class BaseDICOMFormat(BaseFormat):
         # output to one array per channel, in a dictionary.
         
         t2 = time.time()
-        d3 = t2 - t1
+        d2 = t2 - t1
         t1 = time.time()
 
         # each should use a different padding value.
         output = {}
         
         # group the df by file and seq_id
-        grouped = df.groupby(['file', 'group_idx'])
-        
-        for (file, group_idx), group in grouped:
-            # print("Reading ", file, " ", seq_id)
-            seqs = dcm_reader.get_waveform_sequences(open, file)
+        if len(df) > 0:
+            files_df = df.groupby('filename')
+            
+            
+            for file, file_gr in files_df:
 
-            # compute start and end offsets in the file using timestamps
-            freq = min(group['freq'])
-            max_len = int(np.round(end_time * freq)) - int(np.round(start_time * freq))
-            
-            gstart = min(group['start_time'])
-            gend = max(group['end_time'])
-            nsamples = max(group['number_samples'])
-            start_offset = 0 if start_time <= gstart else int(np.round((start_time - gstart) * freq))
-            end_offset = nsamples if end_time >= gend else int(np.round((end_time - gstart) * freq))
-            # compute the start and end offset in the output for this channel
-            target_start = 0 if gstart <= start_time else int(np.round((gstart - start_time) * freq))
-            target_end = max_len if end_time <= gend else int(np.round((gend - start_time) * freq))
-            
-            # then read the data and transpose.
-            arr = dcm_reader.get_multiplex_array(open, file, seqs, group_idx, start_offset, end_offset, as_raw = False)
-            
-            # then use the channel ids to get the data, and write to output
-            for index, row in group.iterrows():
+                groups = file_gr.groupby('group_idx')
                 
-                channel = row['channel']
-                padding_value = int.from_bytes( row['padding_value'], byteorder="little", signed=True )
-                if channel not in output.keys():
-                    output[channel] = np.full(shape = max_len, 
-                          fill_value = np.nan,
-                          dtype=np.float64)
-                
-                id = row['channel_idx']
-                out = arr[id, :]
-                # print('target range', target_start, ' ', target_end)
-                # print('target_shape ', output[channel].shape)
-                # print('arr shape', arr.shape)
-                # print('out shape', out.shape)
-                # out = np.reshape(arr[id][:], (1, arr.shape[1]))
-                output[channel][target_start:target_end] = out
+                # open the file, and get the waveform sequence object
+                with open(file, 'rb') as fobj:
+                    ds = dcmread(fobj, defer_size = 100)
+                    seqs = dcm_reader.get_tag(fobj, ds, 'WaveformSequence', defer_size = 100)
+                    
+                    for group_idx, group in groups:
+                        
+                        # compute start and end offsets in the file using timestamps
+                        freq = min(group['freq'])
+                        max_len = int(np.round(end_time * freq)) - int(np.round(start_time * freq))
+                    
+                        gstart = min(group['start_time'])
+                        gend = max(group['end_time'])
+                        nsamples = max(group['number_samples'])
+                        start_offset = 0 if start_time <= gstart else int(np.round((start_time - gstart) * freq))
+                        end_offset = nsamples if end_time >= gend else int(np.round((end_time - gstart) * freq))
+                        # compute the start and end offset in the output for this channel
+                        target_start = 0 if gstart <= start_time else int(np.round((gstart - start_time) * freq))
+                        target_end = max_len if end_time <= gend else int(np.round((gend - start_time) * freq))
+                        
+                        # then read the data and transpose.
+                        item = cast(list[Dataset], seqs)[group_idx]
+                        arr = dcm_reader.get_multiplex_array(fobj, item, start_offset, end_offset, as_raw = False)
+                        
+                        # then use the channel ids to get the data, and write to output
+                        for index, row in group.iterrows():
+                            
+                            channel = row['channel']
+                            padding_value = row['padding_value']
+                            if channel not in output.keys():
+                                output[channel] = np.full(shape = max_len, 
+                                    fill_value = np.nan,
+                                    dtype=np.float64)
+                            
+                            id = row['channel_idx']
+                            out = arr[id, :]
+                            # print('target range', target_start, ' ', target_end)
+                            # print('target_shape ', output[channel].shape)
+                            # print('arr shape', arr.shape)
+                            # print('out shape', out.shape)
+                            # out = np.reshape(arr[id][:], (1, arr.shape[1]))
+                            output[channel][target_start:target_end] = out
             
         t2 = time.time()
-        d4 = t2 - t1
-        print("time: (read, metadata, filter, array) = (", d1, d2, d3, d4, ")")
+        d3 = t2 - t1
+        # print("time: (read, metadata, array) = (", d1, d2, d3, ")")
 
 
         # now return output.
