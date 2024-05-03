@@ -35,6 +35,20 @@ jobs:
           python -m pip install flake8 pytest
           pip install -r requirements.txt
 
+      - name: Discover JVM Path
+        run: |
+          JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+          echo "JAVA_HOME: $JAVA_HOME"
+          if [ -d "$JAVA_HOME/lib/server" ]; then
+            echo "JPY_JVM_DLL=$JAVA_HOME/lib/server/libjvm.so"
+          elif [ -d "$JAVA_HOME/jre/lib/server" ]; then
+            echo "JPY_JVM_DLL=$JAVA_HOME/jre/lib/server/libjvm.so"
+          elif [ -d "$JAVA_HOME/lib/client" ]; then
+            echo "JPY_JVM_DLL=$JAVA_HOME/lib/client/libjvm.so"
+          else
+            echo "libjvm.so not found in usual locations"
+          fi
+
       - name: Copy .env.example to .env
         run: cp .env.example .env
 
