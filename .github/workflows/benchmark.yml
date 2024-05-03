@@ -45,7 +45,7 @@ jobs:
             exit 0
           fi
           IFS=' ' read -ra FILES <<< "$FORMAT_FILES"
-          RECORD_NAME="./data/waveforms/mimic_iv/waves/p169/p16955095/82284982/82284982"
+          RECORD_NAME="./data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648"
           for file in "${FILES[@]}"
           do
             # Skip base.py file
