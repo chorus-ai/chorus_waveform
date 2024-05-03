@@ -71,15 +71,21 @@ jobs:
             done
           done
 
-      - name: Post results to pull request
+      - name: Concatenate results
         run: |
           cat benchmark_results_*.txt > final_results.txt
           echo "Benchmark results:"
           cat final_results.txt
 
-    #   - uses: unsplash/comment-on-pr@master
-    #     if: steps.find-formats.outputs.format_files != ''
-    #     env:
-    #       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    #     with:
-    #       msg: "${{ readFile('final_results.txt') }}"
+      - name: Post results to pull request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const resultContent = fs.readFileSync('final_results.txt', 'utf8');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `Benchmark results:\n\`\`\`${resultContent}\`\`\``
+            });
