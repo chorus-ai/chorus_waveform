@@ -43,10 +43,26 @@ jobs:
           IFS=' ' read -ra FILES <<< "${{ steps.find-formats.outputs.format_files }}"
           for file in "${FILES[@]}"
           do
-            FORMAT_CLASS=$(echo "$file" | grep -oP 'formats/\K(.*)(?=\.py)')
-            FORMAT_CLASS="waveform_benchmark.formats.$FORMAT_CLASS.$FORMAT_CLASS"
-            echo "Running benchmark for $FORMAT_CLASS"
-            ./waveform_benchmark.py -r ./data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648 -f "$FORMAT_CLASS" > "benchmark_results_$FORMAT_CLASS.txt"
+            # Skip base.py file
+            if [[ "$file" == *"base.py" ]]; then
+                echo "Skipping benchmark for $file"
+                continue
+            fi
+
+            # Extract the module path from the file path
+            MODULE_PATH=$(echo "$file" | sed 's/\//./g' | sed 's/\.py$//')
+
+            # Find and list all classes in the module
+            echo "Running benchmarks for classes in $MODULE_PATH"
+            CLASSES=$(python3 -c "import sys; import inspect; from importlib import import_module; mod = import_module('$MODULE_PATH'); print(' '.join(cls for cls, obj in inspect.getmembers(mod, inspect.isclass) if obj.__module__ == mod.__name__))")
+            IFS=' ' read -ra CLS <<< "$CLASSES"
+
+            for cls in "${CLS[@]}"
+            do
+              CLASS_PATH="$MODULE_PATH.$cls"
+              echo "Benchmarking $CLASS_PATH"
+              ./waveform_benchmark.py -r ./data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648 -f "$CLASS_PATH" > "benchmark_results_${cls}.txt"
+            done
           done
 
       - name: Post results to pull request
