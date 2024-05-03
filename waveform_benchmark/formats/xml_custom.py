@@ -52,7 +52,7 @@ def get_path_to_jar_files():
 jpy = import_jpy()
 
 
-class XMLCustom(BaseFormat):
+class BaseXMLCustom(BaseFormat):
     """
     This class allows for writing and reading the custom XML waveform format
     """
@@ -105,14 +105,14 @@ class XMLCustom(BaseFormat):
         return results
 
 
-class XMLCustomUncompressed(XMLCustom):
+class XMLCustomUncompressed(BaseXMLCustom):
     """
     Don't compress the file
     """
     compressed = False
 
 
-class XMLCustomCompressed(XMLCustom):
+class XMLCustomCompressed(BaseXMLCustom):
     """
     Compress the file
     """
