@@ -74,12 +74,12 @@ import waveform_benchmark.formats.dcm_waveform_reader as dcm_reader
 #        all files are for one set of waves are grouped into a series
 #        each series contains a dicomdir
 
-# TODO: [] organize output
-# TODO: [] numpy transpose
-# TODO: [] dicomdir write
-# TODO: [] dicomdir read
-# TODO: [] extract with random access
-# TODO: [] merge channels
+# TODO: [x] organize output
+# TODO: [x] numpy transpose
+# TODO: [x] dicomdir write
+# TODO: [x] dicomdir read
+# TODO: [x] extract with random access
+# TODO: [x] merge chunks
 
 
 # relevant definitions:
@@ -603,117 +603,9 @@ class BaseDICOMFormat(BaseFormat):
         d3 = t2 - t1
         # print("time: (read, metadata, array) = (", d1, d2, d3, ")")
 
-
         # now return output.
         return output
 
-        # # %% 
-        # out = dwh.get_multiplex_array(open, f, seqs, 0, 1000000, 2000000, as_raw = False)
-        # gc.collect()
-        # print('multiplex:  RAM memory Bytes used:', psutil.virtual_memory()[3])
-
-        # # requested_channels = set(signal_names)
-        
-        
-        
-        # # t1 = time.time()
-        # # dicom = dcmread(path, defer_size = 32)
-        # # t2 = time.time()
-        # # # print("Read time", t2 - t1)
-        
-        # # results = { name: [] for name in signal_names }
-        # # dtype = WAVEFORM_DTYPES[(self.WaveformBitsAllocated, self.WaveformSampleInterpretation)]
-        
-        # # labels = []
-        # # for multiplex_group in dicom.WaveformSequence:
-        # #     # check match by channel name, start and end time
-            
-        # #     t1 = time.time()
-        # #     group_channels = set([channel_def.ChannelSourceSequence[0].CodeMeaning for channel_def in multiplex_group.ChannelDefinitionSequence ])
-        # #     if (len(requested_channels.intersection(group_channels)) == 0):
-        # #         # print("skipped due to channel:", group_channels, requested_channels)
-        # #         continue
-            
-        # #     start_t = multiplex_group.MultiplexGroupTimeOffset / 1000.0
-        # #     end_t = start_t + float(multiplex_group.NumberOfWaveformSamples) / float(multiplex_group.SamplingFrequency)
-            
-        # #     if (start_t >= end_time) or (end_t <= start_time):
-        # #         # print("skipped outside range", start_t, end_t, start_time, end_time)
-        # #         continue
-            
-        # #     # inbound.  compute the time:
-        # #     chunk_start_t = max(start_t, start_time)
-        # #     chunk_end_t = min(end_t, end_time)
-            
-        # #     # # out of bounds.  so exclude.
-        # #     # if (chunk_start_t >= chunk_end_t):
-        # #     #     print("skipped 0 legnth group ", chunk_start_t, chunk_end_t)
-        # #     #     continue
-            
-        # #     correction_factors = [channel_def.ChannelSensitivityCorrectionFactor for channel_def in multiplex_group.ChannelDefinitionSequence]
-            
-        # #     # now get the data
-        # #     nchannels = multiplex_group.NumberOfWaveformChannels
-        # #     nsamples = multiplex_group.NumberOfWaveformSamples
-            
-        # #     # compute the global and chunk sample offsets.
-        # #     if (chunk_start_t == start_t):
-        # #         chunk_start_sample = 0
-        # #         global_start_sample = np.round(start_t * float(multiplex_group.SamplingFrequency)).astype(int)
-        # #     else: 
-        # #         chunk_start_sample = np.round((chunk_start_t - start_t) * float(multiplex_group.SamplingFrequency)).astype(int)
-        # #         global_start_sample = np.round(chunk_start_t * float(multiplex_group.SamplingFrequency)).astype(int)
-        # #     if (chunk_end_t == end_t):
-        # #         chunk_end_sample = multiplex_group.NumberOfWaveformSamples
-        # #         global_end_sample = global_start_sample + chunk_end_sample
-        # #     else:
-        # #         chunk_end_sample = np.round((chunk_end_t - start_t) * float(multiplex_group.SamplingFrequency)).astype(int)
-        # #         global_end_sample = global_start_sample + chunk_end_sample
-            
-        # #     t2 = time.time()
-        # #     # print(multiplex_group.MultiplexGroupLabel, chunk_start_sample, chunk_end_sample, "metadata", t2 - t1)
-            
-        # #     t1 = time.time()
-        # #     raw_arr = np.frombuffer(cast(bytes, multiplex_group.WaveformData), dtype=dtype).reshape([nsamples, nchannels])
-        # #     t2 = time.time()
-        # #     # print(multiplex_group.MultiplexGroupLabel, chunk_start_sample, chunk_end_sample, "get raw_arr", t2 - t1)
-            
-        # #     # print(raw_arr.shape)
-        # #     for i, name in enumerate(group_channels):
-        # #         if name not in signal_names:
-        # #             continue
-
-        # #         # if name not in results.keys():
-        # #         #     # results[name] = {}
-        # #         #     # results[name]['chunks'] = []
-        # #         #     results[name] = []
-
-        # #         # unit = channel_def.ChannelSensitivityUnitsSequence[0].CodeValue
-        # #         # gain = 1.0 / channel_def.ChannelSensitivityCorrectionFactor
-        # #         # results[name]['units'] = unit
-        # #         # results[name]['samples_per_second'] = multiplex_group.SamplingFrequency
-        # #         t1 = time.time()
-        # #         mask = (raw_arr[chunk_start_sample:chunk_end_sample, i] == self.PaddingValue)
-        # #         arr_i = raw_arr[chunk_start_sample:chunk_end_sample, i].astype(self.MemoryDataType, copy=False) * float(correction_factors[i])             # out of bounds.  so exclude.)
-        # #         # arr_i = [ x * float(correction_factors[i]) for x in raw_arr[chunk_start_sample:chunk_end_sample, i] ]
-        # #         arr_i[mask] = np.nan
-        # #         # arr_i[arr_i <= float(self.PaddingValue) ] = np.nan
-        # #         # arr_i = arr_i * float(correction_factors[i])
-        # #         t2 = time.time()
-        # #         # print("convert ", name, " to float.", t2 - t1, start_t, end_t, start_time, end_time)
-                
-        # #         # chunk = {'start_time': chunk_start_t, 'end_time': chunk_end_t, 
-        # #         #                              'start_sample': global_start_sample, 'end_sample': global_end_sample,
-        # #         #                              'gain': gain, 'samples': arr_i}
-        # #         # results[name]['chunks'].append(chunk)
-        # #         results[name].append(arr_i)
-                
-        # # for name in results.keys():
-        # #     if ( len(results[name]) > 0):
-        # #         results[name] = np.concatenate(results[name])
-
-        # return results
-        ...
 
 # dicom value types are constrained by IOD type
 # https://dicom.nema.org/medical/dicom/current/output/chtml/part03/PS3.3.html
