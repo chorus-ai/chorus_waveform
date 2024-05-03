@@ -41,14 +41,6 @@ class VitalFormat(BaseFormat):
     def read_waveforms(self, path, start_time, end_time, signal_names):
         signal_names = [x + '/' + x for x in signal_names]
         vitalfile = vitaldb.VitalFile(path, track_names=signal_names)
-        # results = {}
-        # for signal_name in signal_names:
-        #     trk = vitalfile.trks[signal_name]
-        #     vals = vitalfile.to_numpy(signal_name, 1/trk.srate)
-        #     signal_name = signal_name.split('/')[-1]
-        #     start_sample = round(start_time / trk.srate)
-        #     end_sample = round(end_time / trk.srate)
-        #     results[signal_name] = vals.flatten()[start_sample:end_sample]
         vitalfile.crop(start_time, end_time)
         results = {}
         for dtname, trk in vitalfile.trks.items():
