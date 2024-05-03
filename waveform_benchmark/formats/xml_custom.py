@@ -14,9 +14,9 @@ load_dotenv()
 
 def import_jpy():
     """
-    This import the jpy module by first checking to see if the user can successfully call import jpy. If they cannot
-    it checks to see if the JPY_JVM_DLL environment variable (pointing to the JVM library) is set. If it is set, call
-    try to load it and then import jpy. Otherwise ask the user to set or correct the path to the library.
+    This imports the jpy module by first checking to see if `import jpy` can be successfully called. If not, it checks
+    to see if the JPY_JVM_DLL environment variable (pointing to the JVM library) is set. If it is set, load
+    it and then `import jpy`. Otherwise, ask the user to set or correct the path to the library.
     """
     try:
         import jpy
@@ -44,12 +44,14 @@ class XMLCustom(BaseFormat):
     def write_waveforms(self, path, waveforms):
 
         # create JVM and get object
-        jvm_options = ['-Xmx8G', '-Xms1G', '-Djava.class.path=./waveform_benchmark/formats/xml_java/mimicwf.jar:./waveform_benchmark/formats/xml_java/ccsixml.jar:./waveform_benchmark/formats/xml_java/ccsicore.jar:./waveform_benchmark/formats/xml_java/imslib.jar:./waveform_benchmark/formats/xml_java/xbean.jar:./waveform_benchmark/formats/xml_java/xercesImpl.jar:./waveform_benchmark/formats/xml_java/xml-apis.jar']
+        jvm_max_heap = os.getenv('BENCHMARK_XML_JVM_MAX_HEAP', default='-Xmx8G')
+        jvm_init_heap = os.getenv('BENCHMARK_XML_JVM_INITIAL_HEAP', default='-Xmx1G')
+        jvm_options = [jvm_max_heap, jvm_init_heap, '-Djava.class.path=./waveform_benchmark/formats/xml_java/mimicwf.jar:./waveform_benchmark/formats/xml_java/ccsixml.jar:./waveform_benchmark/formats/xml_java/ccsicore.jar:./waveform_benchmark/formats/xml_java/imslib.jar:./waveform_benchmark/formats/xml_java/xbean.jar:./waveform_benchmark/formats/xml_java/xercesImpl.jar:./waveform_benchmark/formats/xml_java/xml-apis.jar']
         jpy.create_jvm(options=jvm_options)
         WaveForm2XML_class = jpy.get_type('org.tmc.b2ai.importer.waveform.WaveForm2XML')
         obj = WaveForm2XML_class()
 
-        # get length of longest signal
+        # get the length of longest signal
         length = max(waveform['chunks'][-1]['end_time']
                      for waveform in waveforms.values())
 
@@ -57,7 +59,7 @@ class XMLCustom(BaseFormat):
         for name, waveform in waveforms.items():
             sig_length = round(length * waveform['samples_per_second'])
             samples = numpy.empty(sig_length, dtype=numpy.float32)
-            samples[:] = numpy.nan
+            samples[:] = -200000
             for chunk in waveform['chunks']:
                 start = chunk['start_sample']
                 end = chunk['end_sample']
@@ -67,7 +69,7 @@ class XMLCustom(BaseFormat):
             obj.setSignal(name, samples, waveform['samples_per_second'], waveform['units'])
 
         # save the XML file by writing out our object
-        obj.writeToXML(path, True)
+        obj.writeToXML(path, self.compressed)
 
     def read_waveforms(self, path, start_time, end_time, signal_names):
 
@@ -84,3 +86,17 @@ class XMLCustom(BaseFormat):
             results[signal_name] = numpy.array(obj.getSignal(signal_name, start_time, length, path), dtype='int32')
 
         return results
+
+
+class XMLCustomUncompressed(XMLCustom):
+    """
+    Don't compress the file
+    """
+    compressed = False
+
+
+class XMLCustomCompressed(XMLCustom):
+    """
+    Compress the file
+    """
+    compressed = True
