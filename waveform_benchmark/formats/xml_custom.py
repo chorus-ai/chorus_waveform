@@ -11,6 +11,9 @@ from waveform_benchmark.formats.base import BaseFormat
 # Load variables from .env file
 load_dotenv()
 
+# get path to this file, so we can build a path relative to this
+current_file_path = os.path.dirname(os.path.abspath(__file__))
+
 
 def import_jpy():
     """
@@ -33,6 +36,19 @@ def import_jpy():
     return jpy
 
 
+def get_path_to_jar_files():
+    """
+    build the string to all of the .jar files
+    """
+    jar_string=""
+    files = ['mimicwf.jar', 'ccsixml.jar', 'ccsicore.jar', 'imslib.jar', 'xbean.jar', 'xercesImpl.jar', 'xml-apis.jar']
+    for file in files:
+        jar_string += os.path.join(current_file_path, 'xml_java', file) + ':'
+
+    # return the string without the extraneous : at the end of the last file
+    return jar_string[:-1]
+
+
 jpy = import_jpy()
 
 
@@ -46,7 +62,8 @@ class XMLCustom(BaseFormat):
         # create JVM and get object
         jvm_max_heap = os.getenv('BENCHMARK_XML_JVM_MAX_HEAP', default='-Xmx8G')
         jvm_init_heap = os.getenv('BENCHMARK_XML_JVM_INITIAL_HEAP', default='-Xmx1G')
-        jvm_options = [jvm_max_heap, jvm_init_heap, '-Djava.class.path=./waveform_benchmark/formats/xml_java/mimicwf.jar:./waveform_benchmark/formats/xml_java/ccsixml.jar:./waveform_benchmark/formats/xml_java/ccsicore.jar:./waveform_benchmark/formats/xml_java/imslib.jar:./waveform_benchmark/formats/xml_java/xbean.jar:./waveform_benchmark/formats/xml_java/xercesImpl.jar:./waveform_benchmark/formats/xml_java/xml-apis.jar']
+        jar_path = get_path_to_jar_files()
+        jvm_options = [jvm_max_heap, jvm_init_heap, f'-Djava.class.path={jar_path}']
         jpy.create_jvm(options=jvm_options)
         WaveForm2XML_class = jpy.get_type('org.tmc.b2ai.importer.waveform.WaveForm2XML')
         obj = WaveForm2XML_class()
@@ -74,8 +91,8 @@ class XMLCustom(BaseFormat):
     def read_waveforms(self, path, start_time, end_time, signal_names):
 
         # create JVM and get object
-        jpy.create_jvm([
-                           '-Djava.class.path=./waveform_benchmark/formats/xml_java/mimicwf.jar:./waveform_benchmark/formats/xml_java/ccsixml.jar:./waveform_benchmark/formats/xml_java/ccsicore.jar:./waveform_benchmark/formats/xml_java/imslib.jar:./waveform_benchmark/formats/xml_java/xbean.jar:./waveform_benchmark/formats/xml_java/xercesImpl.jar:./waveform_benchmark/formats/xml_java/xml-apis.jar'])
+        jar_path = get_path_to_jar_files()
+        jpy.create_jvm([f'-Djava.class.path={jar_path}'])
         WaveForm2XML_class = jpy.get_type('org.tmc.b2ai.importer.waveform.WaveForm2XML')
         obj = WaveForm2XML_class()
 
