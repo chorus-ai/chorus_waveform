@@ -66,12 +66,12 @@ from waveform_benchmark.formats.base import BaseFormat
 #        all files are for one set of waves are grouped into a series
 #        each series contains a dicomdir
 
-# TODO: [] organize output
-# TODO: [] numpy transpose
-# TODO: [] dicomdir write
-# TODO: [] dicomdir read
-# TODO: [] extract with random access
-# TODO: [] merge channels
+# TODO: [x] organize output
+# TODO: [x] numpy transpose
+# TODO: [x] dicomdir write
+# TODO: [x] dicomdir read
+# TODO: [x] extract with random access
+# TODO: [x] merge chunks
 
 
 # Value Representation Formats. base class

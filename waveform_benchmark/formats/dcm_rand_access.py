@@ -589,17 +589,7 @@ def partial_read_deferred_data_element(
     ValueError
         If the VR or tag of `raw_data_elem` does not match the read value.
     """
-    # if not deferring using pydicom's version.
-    # if (child_defer_size is None) or (child_defer_size == 0):
-    #     print('using pydicom version of read_deferred_data_element')
-    #     return pydicom.filereader.read_deferred_data_element(
-    #         fileobj_type = type(fp),
-    #         filename_or_obj = fp,
-    #         timestamp = None,
-    #         raw_data_elem = raw_data_elem
-    #     )
-    
-    
+
     if config.debugging:
         logger.debug("Reading deferred element %r" % str(raw_data_elem.tag))
     # If it wasn't read from a file, then return an error
