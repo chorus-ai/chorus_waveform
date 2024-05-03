@@ -3,3 +3,5 @@ numpy==1.26.4
 pyarrow==16.0.0
 pydicom==2.4.4
 wfdb==4.1.2
+jpy==0.16.0
+python-dotenv==1.0.1
