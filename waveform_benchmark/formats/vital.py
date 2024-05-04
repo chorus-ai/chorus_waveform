@@ -2,7 +2,8 @@ import numpy as np
 import vitaldb
 from waveform_benchmark.formats.base import BaseFormat
 
-class Device:
+
+class BaseDevice:
     def __init__(self, name, typename='', port=''):
         self.name = name
         if not typename:
@@ -10,6 +11,7 @@ class Device:
         else:
             self.type = typename
         self.port = port
+
 
 class VitalFormat(BaseFormat):
     def write_waveforms(self, path, waveforms):
@@ -29,15 +31,21 @@ class VitalFormat(BaseFormat):
                 vitalfile.dtend = max(vitalfile.dtend, dtend)
                 samples = chunk['samples']
                 for istart in range(chunk['start_sample'], chunk['end_sample'], int(srate)):
-                    recs.append({'dt': dtstart + istart / srate, 'val': samples[istart:istart+int(srate)]})
+                    recs.append({'dt': dtstart + istart / srate,
+                                 'val': samples[istart:istart+int(srate)]})
                 gain = max(gain, chunk['gain'])
                 mindisp = min(mindisp, np.nanmin(samples))
                 maxdisp = max(maxdisp, np.nanmax(samples))
-            track = vitalfile.add_track(dtname=channel + '/' + channel, recs=recs, srate=srate, unit=waveform['units'], mindisp=mindisp, maxdisp=maxdisp)
+            track = vitalfile.add_track(dtname=channel + '/' + channel,
+                                        recs=recs, srate=srate,
+                                        unit=waveform['units'],
+                                        mindisp=mindisp,
+                                        maxdisp=maxdisp)
             track.gain = gain
             if channel not in vitalfile.devs:
-                vitalfile.devs[channel] = Device(channel)
+                vitalfile.devs[channel] = BaseDevice(channel)
         vitalfile.to_vital(path)
+
     def read_waveforms(self, path, start_time, end_time, signal_names):
         signal_names = [x + '/' + x for x in signal_names]
         vitalfile = vitaldb.VitalFile(path, track_names=signal_names)
@@ -60,7 +68,8 @@ class VitalFormat(BaseFormat):
                     dtstart = start_time
                     rec['val'] = rec['val'][crop_start:]        
                 st = round((dtstart - start_time) * trk.srate)
-                et = min(round((dtend - start_time) * trk.srate), sample_length)
+                et = min(round((dtend - start_time) * trk.srate),
+                         sample_length)
                 samples[st:et] = rec['val'][:et-st]
             results[dtname] = samples
         return results
