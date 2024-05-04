@@ -420,7 +420,7 @@ class BaseDICOMFormat(BaseFormat):
         # import json
 
         # ======== organize the waveform chunks  (tested)
-        # print("INPUT pleth", waveforms['Pleth'])
+        print("INPUT pleth", waveforms['Pleth'])
         # print("INPUT resp", waveforms['Resp'])
         channel_table = self.create_channel_table(waveforms)
         # print("TABLE: ", channel_table)
@@ -494,7 +494,10 @@ class BaseDICOMFormat(BaseFormat):
         
         # ========== open specific subfiles and gather the channel and time information as dataframe
         # extract channel, start_time, end_time, start_sample, end_sample, iod, group, freq, freq_id
-        fileinfo = []
+        
+        # each should use a different padding value.
+        output = {}
+        
         for instance in fs:
             # print("Reading ", instance.path)
             # open the file
@@ -508,96 +511,43 @@ class BaseDICOMFormat(BaseFormat):
 
                 t3 = time.time()
                 seqs = cast(list[Dataset], seqs_raw)
-                for idx, seq in enumerate(seqs):
-                    infos = dcm_reader.get_waveform_seq_info(fobj, seq)
-                    for info in infos:
-                        info['end_time'] = np.round(float(info['start_time']) + float(info['number_samples']) / float(info['freq']), decimals=4)
-                        if (info['channel'] in signal_names) and (info['start_time'] <= float(end_time)) and (info['end_time'] >= float(start_time)):
-                            info['group_idx'] = idx
-                            info['filename'] = instance.path
-                            fileinfo.append(info)
-                t4 = time.time()
-                d6 = t4 - t3
-                # print("read 1 file: ", d5, d6)
+                arrs = {}
+                for group_idx, seq in enumerate(seqs):
+                    channel_infos = dcm_reader.get_waveform_seq_info(fobj, seq)  # get channel info
 
-                # TODO merge with wave reading later...
-                
-        # create a dataframe
-        df = pd.DataFrame(fileinfo)
-        # -------- now extract the rows with matching channel namees
-        # ------- and the rows overlapping with the target time window
-        # df = df[(df['channel'].isin(signal_names)) &
-        #         (df['start_time'] <= float(end_time)) &
-        #         (df['end_time'] >= float(start_time))]
-        # print("Seeking channels:  ", signal_names, " and times ", start_time, "-", end_time  )
-        # print(df)  
-        
-        # ======== now open the files and read the channels directly.
-        # for each file/multilex_group combination, convert the start and end time to positions in the multiplex group
-        #   look up the sequence id, and retrieve the n-d array.
-        # note that this returns all channels in the group in interleaved form
-        # so we should group the df first by file and seq_id, retrieve, then get the channel ids and extract.
-        # to minimize the number of times we need to random access the file.
-        # output to one array per channel, in a dictionary.
-        
-        t2 = time.time()
-        d2 = t2 - t1
-        t1 = time.time()
-
-        # each should use a different padding value.
-        output = {}
-        
-        # group the df by file and seq_id
-        if len(df) > 0:
-            files_df = df.groupby('filename')
-            
-            
-            for file, file_gr in files_df:
-
-                groups = file_gr.groupby('group_idx')
-                
-                # open the file, and get the waveform sequence object
-                with open(file, 'rb') as fobj:
-                    ds = dcmread(fobj, defer_size = 100)
-                    seqs = dcm_reader.get_tag(fobj, ds, 'WaveformSequence', defer_size = 100)
+                    if len(channel_infos) == 0:
+                        continue
                     
-                    for group_idx, group in groups:
+                    # compute start and end offsets in the file using timestamps
+                    freq = channel_infos[0]['freq']
+                    max_len = int(np.round(end_time * freq)) - int(np.round(start_time * freq))
+
+                    # get multiplex group time window
+                    gstart = channel_infos[0]['start_time']
+                    nsamples = channel_infos[0]['number_samples']
+                    gend = np.round(float(gstart) + float(nsamples) / freq, decimals=4)
+                    start_offset = 0 if start_time <= gstart else int(np.round((start_time - gstart) * freq))
+                    end_offset = nsamples if end_time >= gend else int(np.round((end_time - gstart) * freq))
+                    # compute the start and end offset in the output for this channel
+                    target_start = 0 if gstart <= start_time else int(np.round((gstart - start_time) * freq))
+                    target_end = max_len if end_time <= gend else int(np.round((gend - start_time) * freq))
+
+
+                    # get info about the each channel present.
+                    for info in channel_infos:
+                        channel = info['channel']
+                        if (channel in signal_names) and (gstart <= float(end_time)) and (gend >= float(start_time)):
+                            channel_idx = info['channel_idx']
+                            # load the data if never read.  else use cached..
+                            if group_idx not in arrs.keys():
+                                item = cast(list[Dataset], seqs)[group_idx]
+                                arrs[group_idx] = dcm_reader.get_multiplex_array(fobj, item, start_offset, end_offset, as_raw = False)
                         
-                        # compute start and end offsets in the file using timestamps
-                        freq = min(group['freq'])
-                        max_len = int(np.round(end_time * freq)) - int(np.round(start_time * freq))
-                    
-                        gstart = min(group['start_time'])
-                        gend = max(group['end_time'])
-                        nsamples = max(group['number_samples'])
-                        start_offset = 0 if start_time <= gstart else int(np.round((start_time - gstart) * freq))
-                        end_offset = nsamples if end_time >= gend else int(np.round((end_time - gstart) * freq))
-                        # compute the start and end offset in the output for this channel
-                        target_start = 0 if gstart <= start_time else int(np.round((gstart - start_time) * freq))
-                        target_end = max_len if end_time <= gend else int(np.round((gend - start_time) * freq))
-                        
-                        # then read the data and transpose.
-                        item = cast(list[Dataset], seqs)[group_idx]
-                        arr = dcm_reader.get_multiplex_array(fobj, item, start_offset, end_offset, as_raw = False)
-                        
-                        # then use the channel ids to get the data, and write to output
-                        for index, row in group.iterrows():
-                            
-                            channel = row['channel']
-                            padding_value = row['padding_value']
+                            # init the output if not previously allocated
                             if channel not in output.keys():
-                                output[channel] = np.full(shape = max_len, 
-                                    fill_value = np.nan,
-                                    dtype=np.float64)
-                            
-                            id = row['channel_idx']
-                            out = arr[id, :]
-                            # print('target range', target_start, ' ', target_end)
-                            # print('target_shape ', output[channel].shape)
-                            # print('arr shape', arr.shape)
-                            # print('out shape', out.shape)
-                            # out = np.reshape(arr[id][:], (1, arr.shape[1]))
-                            output[channel][target_start:target_end] = out
+                                output[channel] = np.full(shape = max_len, fill_value = np.nan, dtype=np.float64)
+
+                            output[channel][target_start:target_end] = arrs[group_idx][channel_idx, :]
             
         t2 = time.time()
         d3 = t2 - t1
@@ -624,7 +574,7 @@ class DICOMHighBits(BaseDICOMFormat):
         elif iod_name == "ArterialPulseWaveform":
             return dcm_writer.ArterialPulseWaveform(hifi = True)
         elif iod_name == "RespiratoryWaveform":
-            return dcm_writer.RespiratoryWaveform(hifi=16, num_channels=1)
+            return dcm_writer.RespiratoryWaveform(hifi = True, num_channels=1)
         else:
             raise ValueError("Unknown IOD")
 
