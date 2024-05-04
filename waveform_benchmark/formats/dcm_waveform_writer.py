@@ -1,10 +1,8 @@
 import os
 
 import numpy as np
-from pydicom import dcmwrite, dcmread
-from pydicom.filereader import read_file_meta_info
 from pydicom.dataset import Dataset, FileMetaDataset
-from pydicom import uid, _storage_sopclass_uids
+from pydicom import uid
 from pydicom.waveforms.numpy_handler import WAVEFORM_DTYPES
 from typing import TYPE_CHECKING, cast
 
@@ -171,46 +169,6 @@ class DICOMWaveformIOD:
     
         return grouped_channel_sets
 
-
-    # input is a waveforms dict with only channels that are part of the specified waveform storage object
-    # return an array of chunks.  for now, assume all frequencies for a group is the same.
-    def group_and_validate(self, waveforms: dict, channels: list) -> list:
-        
-        grouped_channels = {}
-        for ch in channels:
-            if ch not in self.channel_coding.keys():
-                raise ValueError("channel ", ch, " is not part of the IOD ", type(self))
-            
-            # get the multiplex group number for the channel
-            group = self.channel_coding[ch]['group']
-            freq = waveforms[ch]['samples_per_second']
-            # organize the channel by group and frequency
-            if group not in grouped_channels.keys():
-                grouped_channels[group] = { freq: [ch] }
-            elif freq not in grouped_channels[group].keys():
-                grouped_channels[group][freq] = [ch]
-            else:
-                grouped_channels[group][freq].append(ch)
-        
-        print("Grouped channels in group_and_validate ", grouped_channels)
-        
-        for group, freqs in grouped_channels.items():
-            if len(freqs.keys()) > 1:
-                print("ERROR:  group ", group, " has multiple freqiuencies: ", freqs.keys())
-        
-        # in case thre are multiple frequencies for a group of channels that should go together: 
-        # if there are more than 1 frequencies in a group, split it out into a separate set.
-        # find max distinct frequencies for any group
-        max_n_sets = max([len(freqs) for freqs in grouped_channels.values()])
-        grouped_channel_sets = [ {} for i in range(max_n_sets)]
-        for group, freqs in grouped_channels.items():
-            for i, f in enumerate(freqs.items()):
-                grouped_channel_sets[i][group] = f
-           
-        print("Grouped Channel Sets in group_and_validate ", grouped_channel_sets)       
-    
-        return grouped_channel_sets
-
     
 class TwelveLeadECGWaveform(DICOMWaveformIOD):
     def __init__(self, hifi: bool = False, num_channels: int = None):
@@ -246,7 +204,6 @@ class GeneralECGWaveform(DICOMWaveformIOD):
             self.VR = DICOMWaveform16
             self.storage_uid = uid.GeneralECGWaveformStorage
         
-        
     modality = 'ECG'
     channel_coding = {
         "I": {'group' : 1, 'scheme': 'MDC', 'value': '2:1', 'meaning': 'Lead I'},
@@ -267,12 +224,10 @@ class GeneralECGWaveform(DICOMWaveformIOD):
 
 class AmbulatoryECGWavaform(DICOMWaveformIOD):
     def __init__(self, hifi: bool = False, num_channels: int = None):
-        if hifi:
-            self.VR = DICOMWaveform16
-        else:
-            self.VR = DICOMWaveform8
+        pass
         
-    
+    # 8bit allowed, but gain may be too high for 8 bit
+    VR = DICOMWaveform16
     storage_uid = uid.AmbulatoryECGWaveformStorage
     modality = 'ECG'
     channel_coding = {
@@ -304,12 +259,14 @@ class HemodynamicWavaform(DICOMWaveformIOD):
     
 class ArterialPulseWaveform(DICOMWaveformIOD):
     def __init__(self, hifi: bool = False, num_channels: int = None):
-        if hifi:
-            self.VR = DICOMWaveform16
-        else:
-            self.VR = DICOMWaveform8
-        
+        # if hifi:
+        #     self.VR = DICOMWaveform16
+        # else:
+        #     self.VR = DICOMWaveform8
+        pass
                 
+    # 8bit allowed, but gain may be too high for 8 bit
+    VR = DICOMWaveform16                
     storage_uid = uid.ArterialPulseWaveformStorage
     modality = 'HD'
     channel_coding = {
@@ -322,10 +279,12 @@ class ArterialPulseWaveform(DICOMWaveformIOD):
 class RespiratoryWaveform(DICOMWaveformIOD):
     def __init__(self, hifi: bool = False, num_channels: int = None):
         if num_channels <= 1:
-            if hifi:
-                self.VR = DICOMWaveform16
-            else:
-                self.VR = DICOMWaveform8
+            # if hifi:
+            #     self.VR = DICOMWaveform16
+            # else:
+            #     self.VR = DICOMWaveform8
+            # 8bit allowed, but gain may be too high for 8 bit
+            self.VR = DICOMWaveform16
             storage_uid = uid.RespiratoryWaveformStorage
         elif num_channels > 1:
             if hifi:
@@ -333,7 +292,6 @@ class RespiratoryWaveform(DICOMWaveformIOD):
             else:
                 self.VR = DICOMWaveform16
             storage_uid = uid.MultichannelRespiratoryWaveformStorage
-        
                     
     modality = 'RESP'
     channel_coding = {
@@ -348,7 +306,6 @@ class RoutineScalpEEGWaveform(DICOMWaveformIOD):
         else:
             self.VR = DICOMWaveform16
         
-        
     storage_uid = uid.RoutineScalpElectroencephalogramWaveformStorage
     modality = 'EEG'
     channel_coding = {
@@ -362,7 +319,6 @@ class SleepEEGWaveform(DICOMWaveformIOD):
         else:
             self.VR = DICOMWaveform16
         
-        
     storage_uid = uid.SleepElectroencephalogramWaveformStorage
     modality = 'EEG'
     channel_coding = {
@@ -375,7 +331,6 @@ class ElectromyogramWaveform(DICOMWaveformIOD):
             self.VR = DICOMWaveform32
         else:
             self.VR = DICOMWaveform16
-        
         
     storage_uid = uid.ElectromyogramWaveformStorage
     modality = 'EMG'

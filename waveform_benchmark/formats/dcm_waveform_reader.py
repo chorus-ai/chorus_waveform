@@ -4,7 +4,6 @@ import os
 
 from typing import BinaryIO, Any, cast
 from pydicom.fileutil import PathType
-from pydicom import dcmread
 
 from pydicom.tag import Tag
 from pydicom.dataset import Dataset
