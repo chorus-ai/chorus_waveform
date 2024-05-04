@@ -14,37 +14,48 @@ class BaseDevice:
 
 
 class VitalFormat(BaseFormat):
+
     def write_waveforms(self, path, waveforms):
         vitalfile = vitaldb.VitalFile()
         vitalfile.dtstart = None
+
         for channel, waveform in waveforms.items():
             recs = []
             srate = waveform['samples_per_second']
             gain = 0
             mindisp = 9999
             maxdisp = 0
+
             for chunk in waveform['chunks']:
                 dtstart = chunk['start_time']
                 dtend = chunk['end_time']
+
                 if vitalfile.dtstart == None or vitalfile.dtstart > dtstart:
                     vitalfile.dtstart = dtstart
+
                 vitalfile.dtend = max(vitalfile.dtend, dtend)
                 samples = chunk['samples']
+
                 for istart in range(chunk['start_sample'], chunk['end_sample'], int(srate)):
                     recs.append({'dt': dtstart + istart / srate,
                                  'val': samples[istart:istart+int(srate)]})
+
                 gain = max(gain, chunk['gain'])
                 mindisp = min(mindisp, np.nanmin(samples))
                 maxdisp = max(maxdisp, np.nanmax(samples))
+
             track = vitalfile.add_track(dtname=channel + '/' + channel,
                                         recs=recs, srate=srate,
                                         unit=waveform['units'],
                                         mindisp=mindisp,
                                         maxdisp=maxdisp)
             track.gain = gain
+
             if channel not in vitalfile.devs:
                 vitalfile.devs[channel] = BaseDevice(channel)
-        vitalfile.to_vital(path)
+
+        file_name = f"{path}.vital"
+        vitalfile.to_vital(file_name)
 
     def read_waveforms(self, path, start_time, end_time, signal_names):
         signal_names = [x + '/' + x for x in signal_names]
