@@ -127,47 +127,6 @@ class DICOMWaveformIOD:
     modality = None
     channel_coding = {} 
     VR = DICOMWaveformVR
- 
- 
- 
-    # input is a waveforms dict with only channels that are part of the specified waveform storage object
-    # return an array of chunks.  for now, assume all frequencies for a group is the same.
-    def group_and_validate(self, waveforms: dict, channels: list) -> list:
-        
-        grouped_channels = {}
-        for ch in channels:
-            if ch not in self.channel_coding.keys():
-                raise ValueError("channel ", ch, " is not part of the IOD ", type(self))
-            
-            # get the multiplex group number for the channel
-            group = self.channel_coding[ch]['group']
-            freq = waveforms[ch]['samples_per_second']
-            # organize the channel by group and frequency
-            if group not in grouped_channels.keys():
-                grouped_channels[group] = { freq: [ch] }
-            elif freq not in grouped_channels[group].keys():
-                grouped_channels[group][freq] = [ch]
-            else:
-                grouped_channels[group][freq].append(ch)
-        
-        print("Grouped channels in group_and_validate ", grouped_channels)
-        
-        for group, freqs in grouped_channels.items():
-            if len(freqs.keys()) > 1:
-                print("ERROR:  group ", group, " has multiple freqiuencies: ", freqs.keys())
-        
-        # in case thre are multiple frequencies for a group of channels that should go together: 
-        # if there are more than 1 frequencies in a group, split it out into a separate set.
-        # find max distinct frequencies for any group
-        max_n_sets = max([len(freqs) for freqs in grouped_channels.values()])
-        grouped_channel_sets = [ {} for i in range(max_n_sets)]
-        for group, freqs in grouped_channels.items():
-            for i, f in enumerate(freqs.items()):
-                grouped_channel_sets[i][group] = f
-           
-        print("Grouped Channel Sets in group_and_validate ", grouped_channel_sets)       
-    
-        return grouped_channel_sets
 
     
 class TwelveLeadECGWaveform(DICOMWaveformIOD):
