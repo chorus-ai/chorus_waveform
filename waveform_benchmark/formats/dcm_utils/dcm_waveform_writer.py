@@ -523,7 +523,7 @@ class DICOMWaveformWriter:
         wfDS.MultiplexGroupTimeOffset = str(np.round(1000.0 * start_time, decimals=4) )  # first start point
         # wfDS.TriggerTimeOffset = '0.0'
         wfDS.WaveformOriginality = "ORIGINAL"
-        wfDS.NumberOfWaveformChannels = len(channel_chunk)
+        wfDS.NumberOfWaveformChannels = len(channels.keys())
         wfDS.SamplingFrequency = freq
         wfDS.NumberOfWaveformSamples = int(chunk_max_len)
         wfDS.MultiplexGroupLabel = str(group)
@@ -554,19 +554,26 @@ class DICOMWaveformWriter:
             v = np.frombuffer(chunk['samples'][start_src:end_src], dtype=np.dtype(chunk['samples'].dtype))
             gain = float(chunk['gain'])
             values = np.where(np.isnan(v), float(iod.VR.PaddingValue), v * gain)
-            # print("chunk shape:", chunk['samples'].shape)
-            # print("values shape: ", values.shape)
-            # print("samples shape: ", samples.shape)
+
 
             chan_id = channels[channel]
             # write out in integer format
             # samples[chan_id][start_target:end_target] = np.round(values * float(chunk['gain']), decimals=0).astype(iod.VR.PythonDatatype)
             samples[chan_id][start_target:end_target] = np.round(values, decimals=0).astype(iod.VR.PythonDatatype)
+            # print("chunk shape:", chunk['samples'].shape)
+            # print("values shape: ", values.shape)
+            # print("samples shape: ", samples.shape)
             
         # interleave the samples
         samplesT = np.transpose(samples)
+        # print(channel_chunk)
+        # print("output shape", samplesT.shape)
+        
         
         for (channel, chunk_id) in channel_chunk:
+            if channel in channeldefs.keys():
+                continue
+                
             chunk = waveforms[channel]['chunks'][chunk_id]        
             unit = waveforms[channel]['units']
                 
@@ -607,7 +614,7 @@ class DICOMWaveformWriter:
             channeldefs[channel] = chdef            
             
 
-        wfDS.ChannelDefinitionSequence = [channeldefs[channel] for (channel, _) in channel_chunk] 
+        wfDS.ChannelDefinitionSequence = channeldefs.values() 
         # actual bytes. arr is a numpy array of shape np.stack((ch1, ch2,...), axis=1)
         # arr = np.stack([ samples[channel] for channel in channel_chunk.keys()], axis=1)
         wfDS.WaveformData = samplesT.tobytes()

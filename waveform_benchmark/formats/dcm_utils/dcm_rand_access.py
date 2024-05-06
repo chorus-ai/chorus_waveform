@@ -30,8 +30,10 @@ from pydicom.dataset import Dataset
 from pydicom.dataelem import (
     DataElement,
     RawDataElement,
+    DataElement_from_raw,
     empty_value_for_VR,
 )
+from pydicom.filereader import _is_implicit_vr
 # from pydicom.datadict import _dictionary_vr_fast
 from pydicom.sequence import Sequence
 from pydicom._dicom_dict import DicomDictionary, RepeatersDictionary
@@ -411,6 +413,106 @@ def deferred_data_element_generator(
                     is_little_endian,
                 )
 
+def deferred_read_dataset(
+    fp: BinaryIO,
+    is_implicit_VR: bool,
+    is_little_endian: bool,
+    bytelength: int | None = None,
+    stop_when: Callable[[BaseTag, str | None, int], bool] | None = None,
+    defer_size: str | int | float | None = None,
+    parent_encoding: str | MutableSequence[str] = default_encoding,
+    specific_tags: list[BaseTag | int] | None = None,
+    at_top_level: bool = True,
+) -> Dataset:
+    """Return a :class:`~pydicom.dataset.Dataset` instance containing the next
+    dataset in the file.
+
+    Parameters
+    ----------
+    fp : file-like
+        An opened file-like object.
+    is_implicit_VR : bool
+        ``True`` if file transfer syntax is implicit VR.
+    is_little_endian : bool
+        ``True`` if file has little endian transfer syntax.
+    bytelength : int, None, optional
+        ``None`` to read until end of file or ItemDelimiterTag, else a fixed
+        number of bytes to read
+    stop_when : None, optional
+        Optional call_back function which can terminate reading. See help for
+        :func:`data_element_generator` for details
+    defer_size : int, str or float, optional
+        Size to avoid loading large elements in memory. See :func:`dcmread` for
+        more parameter info.
+    parent_encoding : str or List[str]
+        Optional encoding to use as a default in case (0008,0005) *Specific
+        Character Set* isn't specified.
+    specific_tags : list of BaseTag, optional
+        See :func:`dcmread` for parameter info.
+    at_top_level: bool
+        If dataset is top level (not within a sequence).
+        Used to turn off explicit VR heuristic within sequences
+
+    Returns
+    -------
+    dataset.Dataset
+        A Dataset instance.
+
+    See Also
+    --------
+    :class:`~pydicom.dataset.Dataset`
+        A collection (dictionary) of DICOM
+        :class:`~pydicom.dataelem.DataElement` instances.
+    """
+    raw_data_elements: dict[BaseTag, RawDataElement | DataElement] = {}
+    fp_tell = fp.tell
+    fp_start = fp.tell()
+    is_implicit_VR = _is_implicit_vr(
+        fp, is_implicit_VR, is_little_endian, stop_when, is_sequence=not at_top_level
+    )
+    fp.seek(fp_start)
+    de_gen = deferred_data_element_generator(
+        fp,
+        is_implicit_VR,
+        is_little_endian,
+        stop_when,
+        defer_size,
+        parent_encoding,
+        specific_tags,
+    )
+    try:
+        if bytelength is None:
+            raw_data_elements = {e.tag: e for e in de_gen}
+        else:
+            while fp_tell() - fp_start < bytelength:
+                raw_data_element = next(de_gen)
+                raw_data_elements[raw_data_element.tag] = raw_data_element
+    except StopIteration:
+        pass
+    except EOFError as details:
+        if config.settings.reading_validation_mode == config.RAISE:
+            raise
+        msg = str(details) + " in file " + getattr(fp, "name", "<no filename>")
+        # warn_and_log(msg, UserWarning)
+    except NotImplementedError as details:
+        logger.error(details)
+
+    ds = Dataset(raw_data_elements)
+
+    encoding: str | MutableSequence[str]
+    if 0x00080005 in raw_data_elements:
+        elem = cast(RawDataElement, raw_data_elements[BaseTag(0x00080005)])
+        char_set = cast(
+            str | MutableSequence[str] | None, DataElement_from_raw(elem).value
+        )
+        encoding = convert_encodings(char_set)  # -> List[str]
+    else:
+        encoding = parent_encoding  # -> str | MutableSequence[str]
+
+    ds.set_original_encoding(is_implicit_VR, is_little_endian, encoding)
+    return ds
+
+
 # modified version of pydicom.filereader.read_sequence
 def deferred_read_sequence(
     fp: BinaryIO,
@@ -424,15 +526,6 @@ def deferred_read_sequence(
     """Read and return a :class:`~pydicom.sequence.Sequence` -- i.e. a
     :class:`list` of :class:`Datasets<pydicom.dataset.Dataset>`.
     """
-    if defer_size is None:
-        return pydicom.filereader.read_sequence(
-            fp = fp,
-            is_implicit_VR = is_implicit_VR,
-            is_little_endian = is_little_endian,
-            bytelength = bytelength,
-            encoding = encoding,
-            offset = offset
-        )
     
     seq = []  # use builtin list to start for speed, convert to Sequence at end
     is_undefined_length = False
@@ -473,15 +566,6 @@ def deferred_read_sequence_item(
     """Read and return a single :class:`~pydicom.sequence.Sequence` item, i.e.
     a :class:`~pydicom.dataset.Dataset`.
     """
-    if defer_size is None:
-        return pydicom.filereader.read_sequence_item(
-            fp = fp,
-            is_implicit_VR = is_implicit_VR,
-            is_little_endian = is_little_endian,
-            encoding = encoding,
-            offset = offset
-        )
-    
     
     seq_item_tell = fp.tell() + offset
     tag_length_format = "<HHL" if is_little_endian else ">HHL"
@@ -517,31 +601,16 @@ def deferred_read_sequence_item(
                 "Found Item tag (start of item)"
             )
 
-    if length == 0xFFFFFFFF:
-        ds = pydicom.filereader.read_dataset(
-            fp,
-            is_implicit_VR,
-            is_little_endian,
-            bytelength=None,
-            parent_encoding=encoding,
-            at_top_level=False,
-            defer_size = defer_size
-        )
-        ds.is_undefined_length_sequence_item = True
-    else:
-        ds = pydicom.filereader.read_dataset(
-            fp,
-            is_implicit_VR,
-            is_little_endian,
-            length,
-            parent_encoding=encoding,
-            at_top_level=False,
-            defer_size = defer_size            
-        )
-        ds.is_undefined_length_sequence_item = False
-
-        if config.debugging:
-            logger.debug(f"{fp.tell() + offset:08X}: Finished sequence item")
+    ds = deferred_read_dataset(
+        fp,
+        is_implicit_VR,
+        is_little_endian,
+        bytelength=None if length == 0xFFFFFFFF else length,
+        parent_encoding=encoding,
+        at_top_level=False,
+        defer_size = defer_size
+    )
+    ds.is_undefined_length_sequence_item = length == 0xFFFFFFFF
 
     ds.seq_item_tell = seq_item_tell
     return ds
@@ -550,7 +619,8 @@ def deferred_read_sequence_item(
 # modified version of pydicom.filereader.read_deferred_data_element
 def partial_read_deferred_data_element(
     fp: BinaryIO,
-    raw_data_elem: RawDataElement,
+    raw_data_elem: RawDataElement | DataElement,
+    specific_tags: list[BaseTag | int] | None = None,
     child_defer_size: int | str | float | None = None,
 ) -> DataElement | RawDataElement:
     """Read the previously deferred value from the file into memory
@@ -589,6 +659,8 @@ def partial_read_deferred_data_element(
     ValueError
         If the VR or tag of `raw_data_elem` does not match the read value.
     """
+    if isinstance(raw_data_elem, DataElement):
+        return raw_data_elem
 
     if config.debugging:
         logger.debug("Reading deferred element %r" % str(raw_data_elem.tag))
@@ -616,6 +688,7 @@ def partial_read_deferred_data_element(
         is_implicit_VR = is_implicit_VR, 
         is_little_endian = is_little_endian, 
         defer_size=None, 
+        specific_tags=specific_tags,
         child_defer_size=child_defer_size
     )
 

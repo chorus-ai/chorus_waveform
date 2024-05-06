@@ -1,5 +1,5 @@
 # %%
-import waveform_benchmark.formats.dcm_rand_access as dcmra
+import waveform_benchmark.formats.dcm_utils.dcm_rand_access as dcmra
 import os
 
 from typing import BinaryIO, Any, cast
@@ -14,20 +14,26 @@ from pydicom.sequence import Sequence
 
 import numpy as np
 from pydicom.waveforms.numpy_handler import WAVEFORM_DTYPES
+from pydicom.tag import BaseTag
 
 
 def get_tag(file_obj : BinaryIO, ds : Dataset, tag : str,
-                           defer_size: int = 256) -> DataElement:
+            specific_tags: list[BaseTag | int] | None = None,
+            defer_size: int = 256) -> DataElement:
     t = Tag(tag)
     raw = ds._dict.get(t)
     
-    el = dcmra.partial_read_deferred_data_element(file_obj, raw_data_elem = raw, child_defer_size = defer_size)  # waveform sequence
+    if specific_tags is not None:
+        el = dcmra.partial_read_deferred_data_element(file_obj, raw_data_elem = raw, specific_tags = specific_tags, child_defer_size = defer_size)  # waveform sequence
+    else:
+        el = dcmra.partial_read_deferred_data_element(file_obj, raw_data_elem = raw, child_defer_size = defer_size)  # waveform sequence
     return el
 
 # read the sequence object to get metadata (channel name, group, freq, time_offsets, etc)
 # return a list of dictionary suitable for conversion to a pandas dataframe
 def get_waveform_seq_info(fileobj: BinaryIO,
-                          group : DataElement, defer_size: int = 256) -> list:
+                          group : DataElement,
+                          defer_size: int = 256) -> list:
     channel_info = []
     # collect basic waveform info:  channel name, freq, time offset, number of samples, and group label
 
@@ -58,7 +64,7 @@ def get_waveform_seq_info(fileobj: BinaryIO,
 
     # then load the channel definition sequence ONLY, and fully deserialize it.
     # extract the channel name, and interleave id.
-    chdefs = get_tag(fileobj, group, 'ChannelDefinitionSequence', defer_size = 100)
+    chdefs = get_tag(fileobj, group, 'ChannelDefinitionSequence', specific_tags = ['ChannelSourceSequence', 'CodeMeaning'], defer_size = defer_size)
     # print(type(chdefs))
     
     ch_defs = cast(list[Dataset], chdefs)
