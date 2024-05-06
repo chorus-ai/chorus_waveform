@@ -21,8 +21,8 @@ import warnings
 from pydicom.fileset import FileSet
 
 from waveform_benchmark.formats.base import BaseFormat
-import waveform_benchmark.formats.dcm_waveform_writer as dcm_writer
-import waveform_benchmark.formats.dcm_waveform_reader as dcm_reader
+import waveform_benchmark.formats.dcm_utils.dcm_waveform_writer as dcm_writer
+import waveform_benchmark.formats.dcm_utils.dcm_waveform_reader as dcm_reader
 
 # types of waveforms and constraints:  
 #   https://dicom.nema.org/medical/dicom/current/output/chtml/part03/PS3.3.html
@@ -338,40 +338,45 @@ class BaseDICOMFormat(BaseFormat):
         stack = []
         deleted = set()
         added = dict()  # store the (channel, chunk_id)
+        
+        # insert all splitter
+        time_series = chunk_table['start_time']
+        stime = time_series.min()
+        etime = time_series.max()
+        
+        splitters = []
+        periods = int(math.ceil((etime - stime) / duration_sec))
+        
+        for i in range(periods):
+            splitter_time = stime + (i+1) * duration_sec
+
+            splitters.append({'channel': "__splitter__", 
+                            'freq': -1,
+                            'chunk_id': 0,  # note:  this will occur before the end time entries.
+                            'start_time': splitter_time, 
+                            'end_time': splitter_time,
+                            'iod': "any",
+                            'group': -1,
+                            'freq_id': -1})
+        
+        splits = pd.DataFrame(splitters)
+        # merge splits and sorted
+        
 
         for (iod, freq_id), gr in sorted:
     
             # ====== add splitters
-            
             # df is sorted by time.
-            time_series = gr['start_time']
-            stime = time_series.min()
-            etime = time_series.max()
+            splits_iod = pd.concat([gr, splits]).sort_values(by=['start_time', 'chunk_id'])
             
-            splitters = []
-            periods = math.ceil((etime - stime) / duration_sec)
+            # print(splits_iod)
             
-            for i in range(periods):
-                splitter_time = stime + (i+1) * duration_sec
-
-                splitters.append({'channel': "__splitter__", 
-                             'freq': -1,
-                             'chunk_id': 0,  # note:  this will occur before the end time entries.
-                             'start_time': splitter_time, 
-                             'end_time': splitter_time,
-                             'iod': iod,
-                             'group': -1,
-                             'freq_id': -1})
-            
-            splits = pd.DataFrame(splitters)
-            # merge splits and sorted
-            splits = pd.concat([gr, splits]).sort_values(by=['start_time', 'chunk_id'])
-            
-            # print(splits)
-            
-            # ======= process splits
+            # ======= process splits_iod
+            stack = []
+            added = dict()
+            deleted = set()
             splitter_start = stime
-            for index, row in splits.iterrows():
+            for index, row in splits_iod.iterrows():
                 # update first
                 if row['chunk_id'] < 0:
                     k = (row['channel'], (-row['chunk_id']) - 1)
@@ -420,19 +425,20 @@ class BaseDICOMFormat(BaseFormat):
         # import json
 
         # ======== organize the waveform chunks  (tested)
-        print("INPUT pleth", waveforms['Pleth'])
-        # print("INPUT resp", waveforms['Resp'])
         channel_table = self.create_channel_table(waveforms)
         # print("TABLE: ", channel_table)
-        subchunks1 = self.split_chunks_temporal_adaptive(channel_table)
-        # print("ADAPTIVE", len(subchunks1))
-        # self._pretty_print(subchunks1)
-        # subchunks1 = self.split_chunks_temporal_fixed(channel_table, duration_sec = 60000.0)
-        # print("FIXED", len(subchunks1))
-        # self._pretty_print(subchunks1)
-        # subchunks1 = self.split_chunks_temporal_merged(channel_table)
-        # print("merged", len(subchunks1))
-        # self._pretty_print(subchunks1)
+        if (self.chunkSize is None):
+            subchunks1 = self.split_chunks_temporal_adaptive(channel_table)
+            # print("ADAPTIVE", len(subchunks1))
+            # self._pretty_print(subchunks1)
+        elif self.chunkSize > 0:            
+            subchunks1 = self.split_chunks_temporal_fixed(channel_table, duration_sec = self.chunkSize)
+            # print("FIXED", len(subchunks1))
+            # self._pretty_print(subchunks1)
+        else:
+            subchunks1 = self.split_chunks_temporal_merged(channel_table)
+            # print("merged", len(subchunks1))
+            # self._pretty_print(subchunks1)
         
         #========== now write out =============
         
@@ -503,7 +509,17 @@ class BaseDICOMFormat(BaseFormat):
             # open the file
             with open(instance.path, 'rb') as fobj:
                 t3 = time.time()
-                ds = dcmread(fobj, defer_size = 100)
+                ds = dcmread(fobj, defer_size = 100, specific_tags = ['WaveformSequence', 
+                        "MultiplexGroupTimeOffset",
+                        "NumberOfWaveformChannels",
+                        "SamplingFrequency",
+                        "NumberOfWaveformSamples",
+                        "MultiplexGroupLabel",
+                        "WaveformPaddingValue",
+                        "ChannelDefinitionSequence",
+                        "ChannelSourceSequence",
+                        "CodeMeaning",
+                        ])
                 seqs_raw = dcm_reader.get_tag(fobj, ds, 'WaveformSequence', defer_size = 100)
                 
                 t4 = time.time()
@@ -540,7 +556,7 @@ class BaseDICOMFormat(BaseFormat):
                             channel_idx = info['channel_idx']
                             # load the data if never read.  else use cached..
                             if group_idx not in arrs.keys():
-                                item = cast(list[Dataset], seqs)[group_idx]
+                                item = cast(Dataset, seq)
                                 arrs[group_idx] = dcm_reader.get_multiplex_array(fobj, item, start_offset, end_offset, as_raw = False)
                         
                             # init the output if not previously allocated
@@ -567,7 +583,8 @@ class DICOMHighBits(BaseDICOMFormat):
     # avoiding 12 lead ECG because of the limit in number of samples.
 
     writer = dcm_writer.DICOMWaveformWriter()
-
+    chunkSize = None # adaptive
+    
     def make_iod(self, iod_name: str):
         if iod_name == "GeneralECGWaveform":
             return dcm_writer.GeneralECGWaveform(hifi = True)
@@ -582,6 +599,7 @@ class DICOMHighBits(BaseDICOMFormat):
 class DICOMLowBits(BaseDICOMFormat):
 
     writer = dcm_writer.DICOMWaveformWriter()
+    chunkSize = None  # adaptive
     
     def make_iod(self, iod_name: str):
         if iod_name == "GeneralECGWaveform":
@@ -593,3 +611,71 @@ class DICOMLowBits(BaseDICOMFormat):
         else:
             raise ValueError("Unknown IOD")
 
+
+class DICOMHighBitsChunked(BaseDICOMFormat):
+    # waveform lead names to dicom IOD mapping.   Incomplete.
+    # avoiding 12 lead ECG because of the limit in number of samples.
+
+    writer = dcm_writer.DICOMWaveformWriter()
+    chunkSize = 86400.0
+
+    def make_iod(self, iod_name: str):
+        if iod_name == "GeneralECGWaveform":
+            return dcm_writer.GeneralECGWaveform(hifi = True)
+        elif iod_name == "ArterialPulseWaveform":
+            return dcm_writer.ArterialPulseWaveform(hifi = True)
+        elif iod_name == "RespiratoryWaveform":
+            return dcm_writer.RespiratoryWaveform(hifi = True, num_channels=1)
+        else:
+            raise ValueError("Unknown IOD")
+
+    
+class DICOMLowBitsChunked(BaseDICOMFormat):
+
+    writer = dcm_writer.DICOMWaveformWriter()
+    chunkSize = 86400.0
+    
+    def make_iod(self, iod_name: str):
+        if iod_name == "GeneralECGWaveform":
+            return dcm_writer.GeneralECGWaveform(hifi=False)
+        elif iod_name == "ArterialPulseWaveform":
+            return dcm_writer.ArterialPulseWaveform(hifi=False)
+        elif iod_name == "RespiratoryWaveform":
+            return dcm_writer.RespiratoryWaveform(hifi=False, num_channels=1)
+        else:
+            raise ValueError("Unknown IOD")
+        
+        
+
+class DICOMHighBitsMerged(BaseDICOMFormat):
+    # waveform lead names to dicom IOD mapping.   Incomplete.
+    # avoiding 12 lead ECG because of the limit in number of samples.
+
+    writer = dcm_writer.DICOMWaveformWriter()
+    chunkSize = -1
+
+    def make_iod(self, iod_name: str):
+        if iod_name == "GeneralECGWaveform":
+            return dcm_writer.GeneralECGWaveform(hifi = True)
+        elif iod_name == "ArterialPulseWaveform":
+            return dcm_writer.ArterialPulseWaveform(hifi = True)
+        elif iod_name == "RespiratoryWaveform":
+            return dcm_writer.RespiratoryWaveform(hifi = True, num_channels=1)
+        else:
+            raise ValueError("Unknown IOD")
+
+    
+class DICOMLowBitsMerged(BaseDICOMFormat):
+
+    writer = dcm_writer.DICOMWaveformWriter()
+    chunkSize = -1
+    
+    def make_iod(self, iod_name: str):
+        if iod_name == "GeneralECGWaveform":
+            return dcm_writer.GeneralECGWaveform(hifi=False)
+        elif iod_name == "ArterialPulseWaveform":
+            return dcm_writer.ArterialPulseWaveform(hifi=False)
+        elif iod_name == "RespiratoryWaveform":
+            return dcm_writer.RespiratoryWaveform(hifi=False, num_channels=1)
+        else:
+            raise ValueError("Unknown IOD")
