@@ -1,63 +1,64 @@
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
-from collections import defaultdict
+
 from waveform_benchmark.formats.base import BaseFormat
 
 ROW_GROUP_SIZE_IN_SECONDS = 5
+
 
 class Parquet(BaseFormat):
     """
     Example format using Parquet.
     """
-
     def write_waveforms(self, path, waveforms):
         # Convert each channel into an array with no gaps.
 
         for name, waveform in waveforms.items():
             length = waveform['chunks'][-1]['end_sample']
             samples = np.empty(length, dtype=np.float32)
-            samples[:] = np.nan # fill with nan
+            samples[:] = np.nan
             for chunk in waveform['chunks']:
                 start = chunk['start_sample']
                 end = chunk['end_sample']
                 samples[start:end] = chunk['samples']
-            
-             # Convert samples list to PyArrow array
+
+            # Convert samples list to PyArrow array
             samples_array = pa.array(samples)
-            
+
             # Create a PyArrow Table
             table = pa.Table.from_arrays([samples_array], names=[name])
-            
+
             # Prepare metadata, including unit and samples_per_second
             metadata = {
                 b'units': waveform["units"].encode(),
                 b'samples_per_second': str(waveform["samples_per_second"]).encode()
             }
-            
+
             # Add metadata to table
             table = table.replace_schema_metadata(metadata)
-            
-             # Write to Parquet file with row group size based on ROW_GROUP_SIZE_IN_SECONDS
+
+            # Write to Parquet file with row group size based on ROW_GROUP_SIZE_IN_SECONDS
             dynamic_row_group_size = int(waveform["samples_per_second"] * ROW_GROUP_SIZE_IN_SECONDS)
             print('dynqmic row group size:', dynamic_row_group_size)
             file_name = f"{path}_{name}.parquet"
             pq.write_table(table, file_name, row_group_size=dynamic_row_group_size)
-            
-        
-    def read_waveforms(self, path, start_time, end_time, signal_names):
 
+    def read_waveforms(self, path, start_time, end_time, signal_names):
+        """
+        Read waveforms.
+        """
         results = {}
         for signal_name in signal_names:
             filepath = f"{path+'_'+signal_name}.parquet"
 
             try:
                 parquet_file = pq.ParquetFile(filepath)
-                
+
                 # Metadata extraction
                 metadata = parquet_file.metadata.metadata
                 samples_per_second = float(metadata[b'samples_per_second'].decode())
-                
+
                 # Calculate row groups to read
                 row_group_samples = int(samples_per_second * ROW_GROUP_SIZE_IN_SECONDS)
 
