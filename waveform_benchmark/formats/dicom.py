@@ -8,12 +8,21 @@ from pydicom import uid, _storage_sopclass_uids
 from pydicom.waveforms.numpy_handler import WAVEFORM_DTYPES
 from typing import TYPE_CHECKING, cast
 
+import math
+import os.path
+
 import time
+from datetime import datetime
+import pandas as pd
+import pprint
 
 import warnings
-warnings.filterwarnings("error")
+# warnings.filterwarnings("error")
+from pydicom.fileset import FileSet
 
 from waveform_benchmark.formats.base import BaseFormat
+import waveform_benchmark.formats.dcm_utils.dcm_waveform_writer as dcm_writer
+import waveform_benchmark.formats.dcm_utils.dcm_waveform_reader as dcm_reader
 
 # types of waveforms and constraints:  
 #   https://dicom.nema.org/medical/dicom/current/output/chtml/part03/PS3.3.html
@@ -35,21 +44,6 @@ from waveform_benchmark.formats.base import BaseFormat
 #   4. so a longer length of data will be split into multiple files in the same series.
 #   5. this means files in a series will need to be opened for random access.
 
-# relevant definitions:
-# name: modality name, maximum sequences, grouping, SOPUID, max samples, sampling frequency, source, datatype, 
-# TwelveLeadECG:  ECG, 1-5, {1: I,II,III; 2: aVR, aVL, aVF; 3: V1, V2, V3; 4: V4, V5, V6; 5: II}, 16384, 200-1000, DCID 3001 “ECG Lead”, SS
-# GeneralECGWaveform: ECG, 1-4, 1-24 per serquence, ?, 200-1000, DCID 3001 “ECG Lead”, SS
-# General32BitECGWaveform: ECG, 1-4, 1-24 per serquence, ?, by confirmance statement, DCID 3001 “ECG Lead”, SL
-# AmbulatoryECGWaveform:  ECG, 1, 1-12, maxsize of wvaeform data attribute, 50-1000, DCID 3001 “ECG Lead”, SB/SS
-# HemodynamicWaveform: HD, 1-4, 1-8, maxsize of wvaeform data attribute, <400, , SS
-# BasicCardiacElectrophysiologyWaveform: EPS, 1-4, , <=20000, DCID 3011 “Electrophysiology Anatomic Location” , SS
-# ArterialPulseWaveform: HD, 1, 1, ? , <600, DCID 3004 “Arterial Pulse Waveform” , SB/SS
-# RespiratoryWaveform: RESP, 1, 1, ? , <100, DCID 3005 “Respiration Waveform”, SB/SS
-# ScalpEEGWaveform:  EEG, 1 (interruption as separate instances), 1-64, , unconstrained, DCID 3030 “EEG Lead”, SS/SL
-# ElectromyogramWaveform: EMG, unconstrained, 1-64, , unconstrained, DCID 3031 “Lead Location Near or in Muscle” or DCID 3032 “Lead Location Near Peripheral Nerve”, SS/SL
-# SleepEEGWaveform: EEG, unconstrained, 1-64, , unconstrained, DCID 3030 “EEG Lead” , SS/SL
-# MultichannelRespiratoryWaveform: RESP, >1, , unconstrained, DCID 3005 “Respiration Waveform” , SS/SL
-# 
 
 
 # IMPORTANT: look at the specification constraints for different types of waveforms.
@@ -72,555 +66,616 @@ from waveform_benchmark.formats.base import BaseFormat
 # TODO: private tags for speeding up metadata access while still maintain compatibility?  this would provide "what do we have", and not necessarily "where is it in the file"
 # TODO: compression - in transfer syntax?  likely not standards compliant.
 # TODO: random access support?
-# TODO: fix the nans...
+# DONE: fix the nans...
+
+# data:  channels grouped in to multiplex groups by standard spec.
+#        multiplex groups are grouped into instance files
+#        each file map to one segment
+#        all files are for one set of waves are grouped into a series
+#        each series contains a dicomdir
+
+# TODO: [x] organize output
+# TODO: [x] numpy transpose
+# TODO: [x] dicomdir write
+# TODO: [x] dicomdir read
+# TODO: [x] extract with random access
+# TODO: [x] merge chunks
+
+
+# relevant definitions:
+# name: modality name, maximum sequences, grouping, SOPUID, max samples, sampling frequency, source, datatype, 
+# TwelveLeadECGWaveform:  ECG, 1-5, {1: I,II,III; 2: aVR, aVL, aVF; 3: V1, V2, V3; 4: V4, V5, V6; 5: II}, 16384, 200-1000, DCID 3001 “ECG Lead”, SS
+# GeneralECGWaveform: ECG, 1-4, 1-24 per serquence, ?, 200-1000, DCID 3001 “ECG Lead”, SS
+# General32BitECGWaveform: ECG, 1-4, 1-24 per serquence, ?, by confirmance statement, DCID 3001 “ECG Lead”, SL
+# AmbulatoryECGWaveform:  ECG, 1, 1-12, maxsize of wvaeform data attribute, 50-1000, DCID 3001 “ECG Lead”, SB/SS
+# HemodynamicWaveform: HD, 1-4, 1-8, maxsize of wvaeform data attribute, <400, , SS
+# CardiacElectrophysiologyWaveform: EPS, 1-4, , <=20000, DCID 3011 “Electrophysiology Anatomic Location” , SS
+# ArterialPulseWaveform: HD, 1, 1, ? , <600, DCID 3004 “Arterial Pulse Waveform” , SB/SS
+# RespiratoryWaveform: RESP, 1, 1, ? , <100, DCID 3005 “Respiration Waveform”, SB/SS
+# ScalpEEGWaveform:  EEG, 1 (interruption as separate instances), 1-64, , unconstrained, DCID 3030 “EEG Lead”, SS/SL
+# ElectromyogramWaveform: EMG, unconstrained, 1-64, , unconstrained, DCID 3031 “Lead Location Near or in Muscle” or DCID 3032 “Lead Location Near Peripheral Nerve”, SS/SL
+# SleepEEGWaveform: EEG, unconstrained, 1-64, , unconstrained, DCID 3030 “EEG Lead” , SS/SL
+# MultichannelRespiratoryWaveform: RESP, >1, , unconstrained, DCID 3005 “Respiration Waveform” , SS/SL
+# 
+
+CHANNEL_TO_DICOM_IOD = {
+    "I":  dcm_writer.GeneralECGWaveform,
+    "II":  dcm_writer.GeneralECGWaveform,
+    "III":  dcm_writer.GeneralECGWaveform,
+    "V":  dcm_writer.GeneralECGWaveform,
+    "aVR":  dcm_writer.GeneralECGWaveform,
+    "Pleth":  dcm_writer.ArterialPulseWaveform,
+    "Resp":  dcm_writer.RespiratoryWaveform,
+}
+
+
 
 class BaseDICOMFormat(BaseFormat):
     """
     Abstract class for WFDB signal formats.
     """
 
-    # waveform lead names to dicom IOD mapping.   Incomplete.
-    # avoiding 12 lead ECG because of the limit in number of samples.
-    CHANNEL_TO_DICOM_SPEC = {
-        "I": {'IOD': 'General32BitECG', 'Modality': 'ECG', 'value': '5.6.3-9-1', 'meaning': 'Lead I (Einthoven)'},
-        "II": {'IOD': 'General32BitECG', 'Modality': 'ECG', 'value': '5.6.3-9-2', 'meaning': 'Lead II'},
-        "III": {'IOD': 'General32BitECG', 'Modality': 'ECG', 'value': '5.6.3-9-61', 'meaning': 'Lead III'},
-        "V": {'IOD': 'General32BitECG', 'Modality': 'ECG', 'value': '5.6.3-9-3', 'meaning': 'Lead V1'},
-        "aVR": {'IOD': 'General32BitECG', 'Modality': 'ECG', 'value': '5.6.3-9-62', 'meaning': 'Lead aVR'},
-        "Pleth": {'IOD': 'ArterialPulseWaveform', 'Modality': 'HD', 'value': '5.6.3-9-00', 'meaning': 'Plethysmogram'},  # these are not ECG  pulse oxymeter
-        "Resp": {'IOD': 'RespiratoryWaveform', 'Modality': 'RESP', 'value': '5.6.3-9-01', 'meaning': 'Respiration'}
-    }
-
-    UCUM_ENCODING = {
-        "mV": "millivolt",
-        "bpm": "beats per minute",
-        "mmHg": "millimeter of mercury",
-        "uV": "microvolt",
-        "NU": "number",
-        "Ohm": "ohm"
-    }
-
-
-
-    # Currently, this class uses a single segment and stores many
-    # signals in one signal file.  Using multiple segments and
-    # multiple signal files could improve efficiency of storage and
-    # per-channel access.
+    # group channels by iod, then split by start and end times. 
+    # a second pass identify different frequences within a group, and split those off into separate chunks.
     
-    # def validate_waveforms(self, waveforms):
-    #     lengths = []
-    #     freqs = []
-    #     for channel, waveform in waveforms.items():
-    #         if 'units' not in waveform:
-    #             raise ValueError(f"Waveform '{channel}' is missing 'units' attribute")
-    #         if 'samples_per_second' not in waveform:
-    #             raise ValueError(f"Waveform '{channel}' is missing 'samples_per_second' attribute")
-    #         if 'chunks' not in waveform:
-    #             raise ValueError(f"Waveform '{channel}' is missing 'chunks' attribute")
-    #         freqs.append(waveform['samples_per_second'])
-    #         lengths.append(waveform['chunks'][-1]['end_time'])
-    #         for chunk in waveform['chunks']:
-    #             if 'start_time' not in chunk:
-    #                 raise ValueError(f"Chunk in waveform '{channel}' is missing 'start_time' attribute")
-    #             if 'end_time' not in chunk:
-    #                 raise ValueError(f"Chunk in waveform '{channel}' is missing 'end_time' attribute")
-    #             if 'start_sample' not in chunk:
-    #                 raise ValueError(f"Chunk in waveform '{channel}' is missing 'start_sample' attribute")
-    #             if 'end_sample' not in chunk:
-    #                 raise ValueError(f"Chunk in waveform '{channel}' is missing 'end_sample' attribute")
-    #             if 'gain' not in chunk:
-    #                 raise ValueError(f"Chunk in waveform '{channel}' is missing 'gain' attribute")
-    #             if 'samples' not in chunk:
-    #                 raise ValueError(f"Chunk in waveform '{channel}' is missing 'samples' attribute")
-    #             if len(chunk['samples']) != chunk['end_sample'] - chunk['start_sample']:
-    #                 raise ValueError(f"Chunk in waveform '{channel}' has incorrect number of samples")
-    #     # check if all the channels have the same length and frequency
-    #     if len(set(lengths)) != 1:
-    #         raise ValueError("Waveforms have different lengths")
-    #     if len(set(freqs)) != 1:
-    #         raise ValueError("Waveforms have different sampling frequencies")
-        
-    # create the outer container
-    # for now make type genericECG.  note that there are multiple other types.
-    def make_empty_dcm_dataset(self, waveformType):
-        
-        # file metadata for fast access.
-        fileMeta = FileMetaDataset()
-        fileMeta.MediaStorageSOPClassUID = uid.GeneralECGWaveformStorage
-        fileMeta.MediaStorageSOPInstanceUID = uid.generate_uid()
-        fileMeta.TransferSyntaxUID = uid.ExplicitVRLittleEndian
+    # create a pandas data table to facilitate dicom file creation.  output should each be a separate series of chunks for an iod.
+    def create_channel_table(self, waveforms) -> pd.DataFrame:
+        # For example: waveforms['V5'] -> {'units': 'mV', 'samples_per_second': 360, 'chunks': [{'start_time': 0.0, 'end_time': 1805.5555555555557, 'start_sample': 0, 'end_sample': 650000, 'gain': 200.0, 'samples': array([-0.065, -0.065, -0.065, ..., -0.365, -0.335,  0.   ], dtype=float32)}]}
 
-        fileDS = Dataset()
-        fileDS.file_meta = fileMeta
-        
-        # Mandatory.  
-        fileDS.SOPInstanceUID = uid.generate_uid()
-        ## this should be same as the MediaStorageSOPClassUID
-        fileDS.SOPClassUID = fileMeta.MediaStorageSOPClassUID
-        fileDS.is_little_endian = True
-        fileDS.is_implicit_VR = True
+        data = []
+        for channel, wf in waveforms.items():
+            if 'chunks' not in wf.keys():
+                raise ValueError("Chunks not found in waveform")
+            if 'samples_per_second' not in wf.keys():
+                raise ValueError("Samples per second not found in waveform")
+            if 'units' not in wf.keys():
+                raise ValueError("Units not found in waveform")
+            
+            freq = wf['samples_per_second']
+            iod = CHANNEL_TO_DICOM_IOD[channel]
+            group = iod.channel_coding[channel]['group']
+            
 
-        # General Study Module
-        fileDS.StudyInstanceUID = uid.generate_uid()
-        fileDS.SeriesInstanceUID = uid.generate_uid()
-        return fileDS
-
-    def set_order_information(self, dataset, referringPhysicianName = "Halpert^Jim", accessionNumber = "0000"):
-        # General Study Module
-        dataset.ReferringPhysicianName = referringPhysicianName
-        dataset.AccessionNumber = accessionNumber
-        return dataset
-
-    def set_study_information(self, dataset, 
-                              patientID = "N/A", 
-                              patientName = "Doe^John",
-                              patientBirthDate = "19800101",
-                              patientSex = "F"):
-        # patient module:
-        dataset.PatientID = patientID
-        dataset.PatientName = patientName
-        dataset.PatientBirthDate = patientBirthDate
-        dataset.PatientSex = patientSex
-        
-        # needed to build DICOMDIR
-        dataset.StudyDate = "20200101"
-        dataset.StudyTime = "000000"
-        dataset.StudyID = "0"
-        dataset.Modality = "ECG"
-        dataset.SeriesNumber = 0
+            for i, chunk in enumerate(wf['chunks']):
+                if 'start_sample' not in chunk.keys():
+                    raise ValueError("Start sample not found in chunk")
+                if 'end_sample' not in chunk.keys():
+                    raise ValueError("End sample not found in chunk")
+                if 'start_time' not in chunk.keys():
+                    raise ValueError("Start time not found in chunk")
+                if 'end_time' not in chunk.keys():
+                    raise ValueError("End time not found in chunk")
+                if 'gain' not in chunk.keys():
+                    raise ValueError("Gain not found in chunk")
+                if 'samples' not in chunk.keys():
+                    raise ValueError("Samples not found in chunk")
                 
-        return dataset
-    
-    def set_waveform_acquisition_info(self, dataset, 
-                                      manufacturer = "Unknown",
-                                      modelName = "Unknown"):
-        # General Equipment Module
-        dataset.Manufacturer = manufacturer
+                # add
+                data.append({'channel': channel, 
+                             'freq': freq,
+                             'chunk_id': -(i + 1),
+                             'start_time': chunk['start_time'], 
+                             'end_time': chunk['end_time'], 
+                            #  'start_sample': chunk['start_sample'], 
+                            #  'end_sample': chunk['end_sample'],
+                             'iod': iod.__name__,
+                             'group': group,
+                             'freq_id': None})
+                # remove
+                data.append({'channel': channel, 
+                             'freq': freq,
+                             'chunk_id': (i+1),
+                             'start_time': chunk['end_time'], 
+                             'end_time': chunk['end_time'], 
+                            #  'start_sample': chunk['start_sample'], 
+                            #  'end_sample': chunk['end_sample'],
+                             'iod': iod.__name__,
+                             'group': group,
+                             'freq_id': None})
+                
+        df = pd.DataFrame(data)
+        df.sort_values(by=['iod', 'start_time', 'freq', 'chunk_id'], inplace=True)
         
-        # Synchronization Module
-        dataset.AcquisitionTimeSynchronized = 'Y'
-        dataset.SynchronizationTrigger = "NO TRIGGER"
-        dataset.SynchronizationFrameOfReferenceUID = "1.2.840.10008.15.1.1"  #UTC. https://dicom.innolitics.com/ciods/general-ecg/synchronization/00200200
-        
-        # Waveform Identification Module
-        dataset.InstanceNumber = 1
-        dataset.ContentDate = "20200101"
-        dataset.ContentTime = "040000"
-        dataset.AcquisitionDateTime = "20200101040000"
-        
-        # Acquisition Context Module
-        dataset.AcquisitionContextSequence = [Dataset()]
-        acqcontext = dataset.AcquisitionContextSequence[0]
-        acqcontext.ValueType = "CODE"
-        acqcontext.ConceptNameCodeSequence = [Dataset()]
-        codesequence = acqcontext.ConceptNameCodeSequence[0]
-        codesequence.CodeValue = "113014"
-        codesequence.CodingSchemeDesignator = "DCM"
-        codesequence.CodingSchemeVersion = '01'
-        codesequence.CodeMeaning = "Resting"
 
-        acqcontext.ConceptCodeSequence = [Dataset()]
-        codesequence = acqcontext.ConceptCodeSequence[0]
-        codesequence.CodeValue = "113014"
-        codesequence.CodingSchemeDesignator = "DCM"
-        codesequence.CodingSchemeVersion = '01'
-        codesequence.CodeMeaning = "Resting"
-
-        return dataset
-    
-    
-    # channels is a list of channels to work with
-    # channel_chunks is a dict of channel to an array of one or more chunk ids.
-    def create_multiplexed_chunk(self, waveforms: dict, channel_chunk: dict):
-        
-        for channel in channel_chunk.keys():
-            if channel not in self.CHANNEL_TO_DICOM_SPEC.keys():
-                raise ValueError("Channel not in CHANNEL_TO_DICOM_SPEC")
-        
-        # verify that all chunks are in bound
-        if any([ i >= len(waveforms[channel]['chunks']) for channel, chunks in channel_chunk.items() for i in chunks]):
-            raise ValueError("Channel chunk out of bounds:" + channel_chunk)
-        
-        multiplex_chunk_freqs = { channel: waveforms[channel]['samples_per_second'] for channel in channel_chunk.keys() }
-        
-        # test that the frequencies are all the same
-        if len(set(multiplex_chunk_freqs.values())) != 1:
-            print("ERROR: Chunks with different freqs", multiplex_chunk_freqs)
-            raise ValueError("Chunks have different frequencies")
-        
-        
-        unprocessed_chunks = []
-        for channel, chunkids in channel_chunk.items():
-            chunks = waveforms[channel]['chunks']
-            for i in chunkids:
-                unprocessed_chunks.append((channel, i, chunks[i]['start_time'], chunks[i]['start_sample'], chunks[i]['end_sample']))
-        
-        
-        min_start_t = min([ start_time for _, _, start_time, _, _ in unprocessed_chunks] )
-        min_start = min([ start_sample for _, _, _, start_sample, _ in unprocessed_chunks] )
-        max_end = max([ max_sample for _, _, _, _, max_sample in unprocessed_chunks] )
-        chunk_max_len = max_end - min_start
-        
-        # create a new multiplex group
-        
-        # waveform module.  see https://dicom.innolitics.com/ciods/general-ecg/waveform/54000100/003a0200/003a0319
-        # shared for multiple waveforms.
-        
-        # endtime is implicit: start_time + number of samples / sampling frequency
-        
-        wfDS = Dataset()  # this is a multiplex group...
-        # in milliseconds.  can only be 16 digits long.  1 year has 31565000000 milliseconds.  we can leave 4 decimal places. and still be within 16 digitas and can handle 3 years.
-        wfDS.MultiplexGroupTimeOffset = str(np.round(1000.0 * min_start_t, decimals=4) )  # first start point
-        # wfDS.TriggerTimeOffset = '0.0'
-        wfDS.WaveformOriginality = "ORIGINAL"
-        wfDS.NumberOfWaveformChannels = len(channel_chunk.keys())
-        wfDS.SamplingFrequency = next(iter(multiplex_chunk_freqs.values()))
-        wfDS.NumberOfWaveformSamples = int(chunk_max_len)
-        wfDS.MultiplexGroupLabel = "|".join(channel_chunk.keys())
-        wfDS.WaveformBitsAllocated = self.WaveformBitsAllocated
-        wfDS.WaveformSampleInterpretation = self.WaveformSampleInterpretation
-        wfDS.WaveformPaddingValue = self.PaddingValue.to_bytes(4, 'little', signed=True)
-        
-        # channel definitions
-        # channel def and samples should be in the same order.
-        channeldefs = {}
-        samples = {}
-        # now collect the chunks into an array, generate the multiplex group, and increment the chunk ids.
-        unprocessed_chunks.sort(key=lambda x: (x[0], x[3], x[4])) # ordered by channel
-        for channel, chunk_id, start_t, start_s, end_s in unprocessed_chunks: 
+        # assign freq_id, one per frequency within a group
+        sorted = df.groupby(['iod', 'group'])
+        out = []
+        # first assign a freq_id, which distinguishes the different frequencies within a iod-group.  
+        for (iod, group), gr in sorted:
             
-            chunk = waveforms[channel]['chunks'][chunk_id]
-            duration = end_s - start_s
-            # start_time = chunk['start_time']  # in multiplex group time offset
-            # end_time = chunk['end_time']  # implicit
-            # start_sample = chunk['start_sample']  # may be used for channel offset or skew, but here we assume all chunks start together.
-            # end_sample = chunk['end_sample']  # not used. assumes all channels have same length.
+            # within each group, each frequency gets a separate id as we should not have multiple frequencies in a group
             
-            # QUANTIZE: and pad missing data
-            values = np.nan_to_num(np.frombuffer(chunk['samples'], dtype=np.dtype(chunk['samples'].dtype)), 
-                                   nan = float(self.PaddingValue) / float(chunk['gain']) )
-            if (duration < chunk_max_len):
-                if channel not in samples.keys():
-                    samples[channel] = np.array([self.PaddingValue] * chunk_max_len, dtype=self.FileDatatype)
-    
-                first = start_s - min_start
-                last = end_s - min_start
-                samples[channel][first:last] = np.round(values * float(chunk['gain']), decimals=0).astype(self.FileDatatype)
+            nfreqs = gr['freq'].nunique()
+            if nfreqs > 1:
+                print("NOTE:  multiple frequencies in a group.  need to split further.")
+                
+                freqed = gr.groupby('freq')
+                id = 1
+                for freq, gr2 in freqed:
+                    # now we have a single frequency for the iod/group/time.  label it.
+                    gr2['freq_id'] = id
+                    id += 1             
+                    out.append(gr2.copy())   # modification does not propagate up.   
             else:
-                samples[channel] = np.round(values * float(chunk['gain']), decimals=0).astype(self.FileDatatype)
-                
-            unit = waveforms[channel]['units']
-                
-            # create the channel
-            chdef = Dataset()
-            # chdef.ChannelTimeSkew = '0'  # Time Skew OR Sample Skew
-            chdef.ChannelSampleSkew = "0"
-            # chdef.ChannelOffset = '0'
-            chdef.WaveformBitsStored = self.WaveformBitsAllocated
-            chdef.ChannelSourceSequence = [Dataset()]
-            source = chdef.ChannelSourceSequence[0]
-                
-            
-            # this needs a look up from a controlled vocab.  This is not correct here..
-            source.CodeValue = self.CHANNEL_TO_DICOM_SPEC[channel]['value']
-            source.CodingSchemeDesignator = "SCPECG"
-            source.CodingSchemeVersion = "1.3"
-            source.CodeMeaning = channel
-                
-            chdef.ChannelSensitivity = 1.0
-            chdef.ChannelSensitivityUnitsSequence = [Dataset()]
-            units = chdef.ChannelSensitivityUnitsSequence[0]
-                
-            # this also needs a look up from a controlled vocab.  This is not correct here...
-            units.CodeValue = unit
-            units.CodingSchemeDesignator = "UCUM"
-            units.CodingSchemeVersion = "1.4"
-            units.CodeMeaning = self.UCUM_ENCODING[unit]  # this needs to be fixed.
-                
-            # multiplier to apply to the encoded value to get back the orginal input.
-            ds = str(1.0 / float(chunk['gain']))
-            chdef.ChannelSensitivityCorrectionFactor = ds if len(ds) <= 16 else ds[:16]
-            chdef.ChannelBaseline = '0'
-            chdef.WaveformBitsStored = self.WaveformBitsAllocated
-            # only for amplifier type of AC
-            # chdef.FilterLowFrequency = '0.05'
-            # chdef.FilterHighFrequency = '300'
-            channeldefs[channel] = chdef            
-            
+                # single freq in group.
+                gr['freq_id'] = 1
+                out.append(gr.copy())  # modification does not propagate up
 
-        wfDS.ChannelDefinitionSequence = [channeldefs[channel] for channel in channel_chunk.keys()] 
-        # actual bytes. arr is a numpy array of shape np.stack((ch1, ch2,...), axis=1)
-        arr = np.stack([ samples[channel] for channel in channel_chunk.keys()], axis=1)
-        wfDS.WaveformData = arr.tobytes()
+        df = pd.concat(out)
+        df.sort_values(by=['iod', 'freq_id', 'start_time', 'chunk_id'], inplace=True)
+        return df 
+        
 
-        return wfDS
+    # input:  list of dataframes, each dataframe is a group of channels with same iod, group, and frequency.
+    # return: dict, each entry is (iod, group, freq, id) = {start_t, end_t, [{(channel, chunk_id): (s_time, e_time), ...}]}, no overlap in time, all channels in a subchunk are non-zero.
+    def split_chunks_temporal_adaptive(self, chunk_table: pd.DataFrame) -> dict:
+        # split the chunks so that each is a collection of channels in a group but with same starting and ending time.
+        # do not put zeros for missing channels
+        # need an ordering of channel starting and ending
+        # create new table with time stamp, and chunk id (- for start, + for end)
+        # sort in order:  iod, group, freq, timestamp, chunk id
+        
+        # now group by iod, freq_id, and time
+        chunk_table.sort_values(by=['iod', 'freq_id', 'start_time', 'chunk_id'], inplace=True)
+        
+        sorted = chunk_table.groupby(['iod', 'freq_id', 'start_time'])
+        
+        
+        # now iterate by time to create teh segments
+        out = dict()
+        file_id = 0
+        last_time = None
+        curr_ch_chunk_list = dict()
+        for (iod, freq_id, time), gr in sorted:
 
-    
-    def add_waveform_chunks_multiplexed(self, dataset, waveforms):
-        
-        # dicom waveform -> sequence of multiplex group -> channels with same sampling frequency
-        # multiplex group can have labels.
-        # 
-        
-        # input here:  each channel can have different sampling rate.  each with chunks
-        # group sample frequencies together
-        # then into chunks.
-        
-        # first group waveforms by sampling frequency
-        channel_freqs = { channel: waveforms[channel]['samples_per_second'] for channel in waveforms.keys() }
-        unique_freqs = set([ freq for _, freq in channel_freqs.items() ])
-        # invert the channel_freqs dictionary.
-        freq_channels = { freq: [ channel for channel, f in channel_freqs.items() if f == freq ] for freq in unique_freqs }
-        # we will iterate over these.
-        print("channels grouped by freq",  freq_channels)
-        
-        # we now need to check for each frequency, group the chunks
-        freq_ch_chunks = {}
-        for freq, channels in freq_channels.items():
-            if freq not in freq_ch_chunks.keys():
-                freq_ch_chunks[freq] = []
-                
-            # get tuples of channel, start/end, channel, and chunkid
-            chunk_startend = []
-            for c, channel in enumerate(channels):
-                chunks = waveforms[channel]['chunks']
-                chunk_startend.append([(chunks[i]['start_sample'], c+1, i+1) for i in range(len(chunks))])
-                chunk_startend.append([(chunks[i]['end_sample'], -c-1, -i-1) for i in range(len(chunks))])  # if start and end times are same for different chunks, "end" comes before "start"
-        
-            # flatten the list
-            chunk_startend = [item for sublist in chunk_startend for item in sublist]
-            # sort by time, and c, then i\
-            chunk_startend.sort(key=lambda x: (x[0], x[1], x[2]))
-            print("Chunk start and end samples", chunk_startend)
+            # print("GROUPED", iod, freq_id, time, gr)
             
-            # now identify the grouping of channel-chunks.  treat the start and end as parenthesis, we are looking for a nesting that is complete.((())())
-            # now we use a stack to identify nesting.
-            chunk_stack = set()  # use set for quick match
-            channel_chunk = {}
-            for time, c, i in chunk_startend:
-                if c < 0:
-                    chunk_stack.remove((-c, -i))
-                    # if empty, then we have a complete group.
-                    if len(chunk_stack) == 0:
-                        freq_ch_chunks[freq].append(channel_chunk.copy())
-                        channel_chunk = {}
+            # now iterate through the groups and create subchunks
+            # since grouped by time, we will have addition and removal of channels/chunks at each time point, but not between.
+            # so it's sufficient to use sets to track
+            if len(curr_ch_chunk_list) == 0:
+                # first subchunk.  no worries.
+                
+                for index, ch in gr.iterrows():
+                    if ch['chunk_id'] < 0:
+                        curr_ch_chunk_list[(ch['channel'], (-ch['chunk_id']) - 1)] = ch['group']
+                    elif ch['chunk_id'] > 0:
+                        print("WARNING: first subchunk, should not be removing a chunk: ", ch)
+                    else:
+                        print("ERROR:  chunk id is 0", ch)
+            else:
+                # not the first subchunk.  save current, then update
+                out[(iod, freq_id, file_id)] = {'start_t': last_time, 'end_t': time, 
+                                            'channel_chunk': curr_ch_chunk_list.copy() }
+                file_id += 1
+                for index, ch in gr.iterrows():
+                    if ch['chunk_id'] < 0:
+                        curr_ch_chunk_list[(ch['channel'], (-ch['chunk_id']) - 1)] = ch['group']
+                    elif ch['chunk_id'] > 0:
+                        del curr_ch_chunk_list[(ch['channel'], ch['chunk_id'] - 1)]
+                    else:
+                        print("ERROR:  chunk id is 0", ch)
+            last_time = time
+                        
+            # print(out)    
+        # do group by
+        return out
+                        
+
+    # input:  list of dataframes, each dataframe is a group of channels with same iod, group, and frequency.
+    # return: dict, each entry is (iod, group, freq, id) = {start_t, end_t, [{(channel, chunk_id): (s_time, e_time), ...]}.  each chunk is defined as the max span for a set of channels.
+    # this is detected via a stack - when stack is empty, a subchunk is created.  note that chunkids are not aligned between channels
+    def split_chunks_temporal_merged(self, chunk_table: pd.DataFrame) -> dict:
+        # split the chunks so that each is a collection of channels in a group.
+        # fill missing channels with zeros
+        # need an ordering of channel starting and ending
+        # create new table with time stamp, and chunk id (- for start, + for end)
+        # sort in order:  iod, group, freq, timestamp, chunk id
+        # iterate and push and pop to queue (parenthesis like). create a chunk when queue becomes empty.
+        
+        chunk_table.sort_values(by=['iod', 'freq_id', 'start_time', 'chunk_id'], inplace=True)
+        sorted = chunk_table.groupby(['iod', 'freq_id'])
+        
+        out = dict()
+        file_id = 0
+        stime = None
+        etime = None
+        stack = []
+        channel_chunk_list = dict()  # store the (channel, chunk_id)
+        for (iod, freq_id), df in sorted:
+            for index, row in df.iterrows():
+                # update first
+                etime = row['end_time']
+                if row['chunk_id'] < 0:
+                    stack.append((row['channel'], (-row['chunk_id']) - 1))  # start of chunk
+                    channel_chunk_list[(row['channel'], (-row['chunk_id']) - 1)] = row['group']  # add on insert only
+                    # save if needed
+                    if len(stack) == 1:
+                        # inserted first element in the stack
+                        stime = row['start_time']
+                elif row['chunk_id'] > 0:
+                    stack.remove((row['channel'], row['chunk_id'] - 1))  # end of chunk
+                    # update end time on remove only
+                    if len(stack) == 0:
+                        # everything removed from a stack. this indicates a subchunk is complete
+                        if len(channel_chunk_list) > 0:
+                            out[(iod, freq_id, file_id)] = {'start_t': stime, 'end_t': etime, 'channel_chunk': channel_chunk_list.copy()}
+                            file_id += 1
+                        channel_chunk_list = {}  # reset
+                        stime = None
+                        etime = None
                 else:
-                    chunk_stack.add((c, i))
-                    if channels[c-1] not in channel_chunk.keys():
-                        channel_chunk[channels[c-1]] = []
-                    channel_chunk[channels[c-1]].append(i-1)
-            print("Ch and Chunks to process", freq_ch_chunks[freq])
-
-        # process the channel chunks
-        dataset.WaveformSequence = []
-        for freq, channel_chunks in freq_ch_chunks.items():
-            for channel_chunk in channel_chunks:
-                multiplexGroupDS = self.create_multiplexed_chunk(waveforms, channel_chunk)
-                dataset.WaveformSequence.append(multiplexGroupDS)        
-        
-        # each unique frequency will have a different label for the multiplex group..  The multiplex group will 
-        # have a separate instance contain the channels with the same frequency
-        # each chunk will have channels with the same frequency (with same label).  Channels for each multiplex group
-        # will have the same start and end time/ sample ids.
-        
-        return dataset
+                    print("ERROR:  chunk id is 0", row)
+                    
+                    
+        return out
 
     
+    # input:  list of dataframes, each dataframe is a group of channels with same iod, group, and frequency.
+    # return: dict, each entry is (iod, group, freq, id) = {start_t, end_t, [(channel, chunk_id), ...]}.  each chunk is a fixed time period.
+    # we should first detect the merged chunks then segment the chunks. 
+    def split_chunks_temporal_fixed(self, chunk_table: pd.DataFrame, duration_sec: float = 600.0) -> dict:
+        # split the chunks so that each is a fixed length with appropriate grouping. some may have partial data
+        # need an ordering of channel starting and ending.
+        # create new table with time stamp, and chunk id (- for start, + for end)
+        # also insert window start times - these form "events" at which to snapshot the channels
+        # sort in order:  iod, group, freq, timestamp, chunk id
+        # iterate and push and pop to queue (parenthesis like).  when seeing events, create the fixed size chunks.
+
+        # # tried to sorting chunks by timestamps first, then partition.  problem is this could create blocks with no channel signals.        
+        # # instead - first get the merged subchunks, then subdivide more
+        # sorted = self.split_chunks_temporal_merged(chunk_table)
+        # # next process each subchunk:
+        
+        chunk_table.sort_values(by=['iod', 'freq_id', 'start_time', 'chunk_id'], inplace=True)
+        sorted = chunk_table.groupby(['iod', 'freq_id'])
+
+        # for each subchunk, get the start and end, and insert splitters.
+        out = dict()
+        file_id = 0
+        stime = None
+        etime = None
+        stack = []
+        deleted = set()
+        added = dict()  # store the (channel, chunk_id)
+        
+        # insert all splitter
+        time_series = chunk_table['start_time']
+        stime = time_series.min()
+        etime = time_series.max()
+        
+        splitters = []
+        periods = int(math.ceil((etime - stime) / duration_sec))
+        
+        for i in range(periods):
+            splitter_time = stime + (i+1) * duration_sec
+
+            splitters.append({'channel': "__splitter__", 
+                            'freq': -1,
+                            'chunk_id': 0,  # note:  this will occur before the end time entries.
+                            'start_time': splitter_time, 
+                            'end_time': splitter_time,
+                            'iod': "any",
+                            'group': -1,
+                            'freq_id': -1})
+        
+        splits = pd.DataFrame(splitters)
+        # merge splits and sorted
+        
+
+        for (iod, freq_id), gr in sorted:
     
-    def add_waveform_chunks_by_time(self, dataset, waveforms):
-        
-        # dicom waveform -> sequence of multiplex group -> channels wiht same sampling frequency
-        # multiplex group can have labels.
-        # 
-        
-        # input here:  each channel can have different sampling rate.  each with chunks
-        # group sample frequencies together
-        # then into chunks.
-        
-        # gather chunks and sort by start time
-        chunk_ids = []
-        for channel in waveforms.keys():
-            chunks = waveforms[channel]['chunks']
-            for i in range(len(chunks)):
-                chunk_ids.append((chunks[i]['start_time'], channel, i))
-        # now sort by start time then channel then chunkid
-        chunk_ids.sort(key=lambda x: (x[0], x[1], x[2]))
-        
-        print("Chunk Ids", chunk_ids)
-        
-        dataset.WaveformSequence = []
-        # iterate over frequencies
-        for _, channel, chunkid in chunk_ids:
+            # ====== add splitters
+            # df is sorted by time.
+            splits_iod = pd.concat([gr, splits]).sort_values(by=['start_time', 'chunk_id'])
             
-            # iterate over chunks
-            multiplexGroupDS = self.create_multiplexed_chunk(waveforms, {channel: [chunkid]})
+            # print(splits_iod)
+            
+            # ======= process splits_iod
+            stack = []
+            added = dict()
+            deleted = set()
+            splitter_start = stime
+            for index, row in splits_iod.iterrows():
+                # update first
+                if row['chunk_id'] < 0:
+                    k = (row['channel'], (-row['chunk_id']) - 1)
+                    stack.append(k)  # start of chunk
+                    added[k] = row['group']  # add on insert only
+                    # save if needed
 
-            dataset.WaveformSequence.append(multiplexGroupDS)
-        
-        
-        # each unique frequency will have a different label for the multiplex group..  The multiplex group will 
-        # have a separate instance contain the channels with the same frequency
-        # each chunk will have channels with the same frequency (with same label).  Channels for each multiplex group
-        # will have the same start and end time/ sample ids.
-        
-        return dataset
+                elif row['chunk_id'] > 0:
+                    k = (row['channel'], row['chunk_id'] - 1)
+                    stack.remove(k)  # end of chunk
+                    deleted.add(k)
+                    # update end time on remove only
+
+                else:  # splitter.
+                    # everything removed from a stack. this indicates a subchunk is complete
+                    if len(added) > 0:
+                        splitter_end = row['start_time']
+                        out[(iod, freq_id, file_id)] = {'start_t': splitter_start, 'end_t': splitter_end, 'channel_chunk': added.copy()}
+                        file_id += 1
+                        splitter_start = splitter_end
+                        # update he added list by any queued deletes.
+                        for x in deleted:
+                            del added[x]
+                        deleted = set()
+
+        return out
+
+    def _pretty_print(self, table: dict):
+        for key, value in table.items():
+            print(key, ": ", value['start_t'], " ", value['end_t'])
+            for k, v in value['channel_chunk'].items():
+                print("        ", k, v)
     
-    
+        
     def write_waveforms(self, path, waveforms):
+        fs = FileSet()
         
-        # validate_waveforms(waveforms)
-        dicom = Dataset()
+        # one series per modality
+        # as many multiplexed groups as allowed by modality
+        # one instance per chunk
         
-        # Create DICOM object
-        dicom = self.make_empty_dcm_dataset("genericECG")
-        dicom = self.set_order_information(dicom)
-        dicom = self.set_study_information(dicom)
-        dicom = self.set_waveform_acquisition_info(dicom)
-        dicom = self.add_waveform_chunks_multiplexed(dicom, waveforms)        
-        
-        # Save DICOM file.  write_like_original is required
-        dicom.save_as(path, write_like_original=False)
-        
-        # dicom.save_as("/mnt/c/Users/tcp19/Downloads/Compressed/test_waveform.dcm", write_like_original=False)
+        # one dicomdir per study?  or series?
+        studyInstanceUID = uid.generate_uid()
+        seriesInstanceUID = uid.generate_uid()
+        prefix, ext = os.path.splitext(path)
+        # import json
 
+        # ======== organize the waveform chunks  (tested)
+        channel_table = self.create_channel_table(waveforms)
+        # print("TABLE: ", channel_table)
+        if (self.chunkSize is None):
+            subchunks1 = self.split_chunks_temporal_adaptive(channel_table)
+            # print("ADAPTIVE", len(subchunks1))
+            # self._pretty_print(subchunks1)
+        elif self.chunkSize > 0:            
+            subchunks1 = self.split_chunks_temporal_fixed(channel_table, duration_sec = self.chunkSize)
+            # print("FIXED", len(subchunks1))
+            # self._pretty_print(subchunks1)
+        else:
+            subchunks1 = self.split_chunks_temporal_merged(channel_table)
+            # print("merged", len(subchunks1))
+            # self._pretty_print(subchunks1)
+        
+        #========== now write out =============
+        
+        # the format of output of split-chunks
+        # { (iod, group, file_id): {start_t, end_t, {(channel, chunk_id) : group, ...}}}
+        for (iod_name, freq_id, file_id), chunk_info in subchunks1.items():
+            # print("writing ", iod_name, ", ", file_id)
+            
+            # create and iod instance
+            iod = self.make_iod(iod_name)
+                                                
+            # each multiplex group can have its own frequency
+            # but if there are different frequencies for channels in a multiplex group, we need to split.
+            
+            # create a new file  TO FIX.
+            dicom = self.writer.make_empty_wave_filedataset(iod)
+            dicom = self.writer.set_order_info(dicom)
+            dicom = self.writer.set_study_info(dicom, studyUID = studyInstanceUID, studyDate = datetime.now())
+            dicom = self.writer.set_series_info(dicom, iod, seriesUID=seriesInstanceUID)
+            dicom = self.writer.set_waveform_acquisition_info(dicom, instanceNumber = file_id)
+            dicom = self.writer.add_waveform_chunks_multiplexed(dicom, iod, chunk_info, waveforms)        
+            
+            # Save DICOM file.  write_like_original is required
+            # these the initial path when added - it points to a temp file.
+            instance = fs.add(dicom)
+
+            # dcm_path = prefix + "_" + str(file_id) + ext
+            # dicom.save_as(dcm_path, write_like_original=False)    
+            # dicom.save_as("/mnt/c/Users/tcp19/Downloads/Compressed/test_waveform.dcm", write_like_original=False)
+
+        # ========= and create dicomdir file ====
+        # ideally - dicomdir file should have a list of channels inside, and the start and end time stamps.
+        # but we may have to keep this in the file metadata field.
+        # https://dicom.nema.org/medical/dicom/current/output/chtml/part03/chapter_F.html
+        # https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_F.5.24.html
+        
+        # fs.write('/mnt/c/Users/tcp19/Downloads/Compressed/test_waveform')
+        # fs.copy(path)
+        # print(path)
+        fs.write(path)
         
     
     def read_waveforms(self, path, start_time, end_time, signal_names):
         # have to read the whole data set each time if using dcmread.  this is not efficient.
         
-        requested_channels = set(signal_names)
-        
+        # ========== read from dicomdir file
+        # ideally - each file should have a list of channels inside, and the start and end time stamps.
+        # but we may have to open each file and read to gather that info
+        # read as file_set, then use metadata to get the table and see which files need to be accessed.
+        # then random access to read.
         t1 = time.time()
-        dicom = dcmread(path, defer_size = 32)
+    
+        ds = dcmread(path + "/DICOMDIR", defer_size = 1000)
+        fs = FileSet(ds)
+    
         t2 = time.time()
-        # print("Read time", t2 - t1)
+        d1 = t2 - t1
+        t1 = time.time()
         
-        results = { name: [] for name in signal_names }
-        dtype = WAVEFORM_DTYPES[(self.WaveformBitsAllocated, self.WaveformSampleInterpretation)]
+        # ========== open specific subfiles and gather the channel and time information as dataframe
+        # extract channel, start_time, end_time, start_sample, end_sample, iod, group, freq, freq_id
         
-        labels = []
-        for multiplex_group in dicom.WaveformSequence:
-            # check match by channel name, start and end time
-            
-            t1 = time.time()
-            group_channels = set([channel_def.ChannelSourceSequence[0].CodeMeaning for channel_def in multiplex_group.ChannelDefinitionSequence ])
-            if (len(requested_channels.intersection(group_channels)) == 0):
-                # print("skipped due to channel:", group_channels, requested_channels)
-                continue
-            
-            start_t = multiplex_group.MultiplexGroupTimeOffset / 1000.0
-            end_t = start_t + float(multiplex_group.NumberOfWaveformSamples) / float(multiplex_group.SamplingFrequency)
-            
-            if (start_t >= end_time) or (end_t <= start_time):
-                # print("skipped outside range", start_t, end_t, start_time, end_time)
-                continue
-            
-            # inbound.  compute the time:
-            chunk_start_t = max(start_t, start_time)
-            chunk_end_t = min(end_t, end_time)
-            
-            # # out of bounds.  so exclude.
-            # if (chunk_start_t >= chunk_end_t):
-            #     print("skipped 0 legnth group ", chunk_start_t, chunk_end_t)
-            #     continue
-            
-            correction_factors = [channel_def.ChannelSensitivityCorrectionFactor for channel_def in multiplex_group.ChannelDefinitionSequence]
-            
-            # now get the data
-            nchannels = multiplex_group.NumberOfWaveformChannels
-            nsamples = multiplex_group.NumberOfWaveformSamples
-            
-            # compute the global and chunk sample offsets.
-            if (chunk_start_t == start_t):
-                chunk_start_sample = 0
-                global_start_sample = np.round(start_t * float(multiplex_group.SamplingFrequency)).astype(int)
-            else: 
-                chunk_start_sample = np.round((chunk_start_t - start_t) * float(multiplex_group.SamplingFrequency)).astype(int)
-                global_start_sample = np.round(chunk_start_t * float(multiplex_group.SamplingFrequency)).astype(int)
-            if (chunk_end_t == end_t):
-                chunk_end_sample = multiplex_group.NumberOfWaveformSamples
-                global_end_sample = global_start_sample + chunk_end_sample
-            else:
-                chunk_end_sample = np.round((chunk_end_t - start_t) * float(multiplex_group.SamplingFrequency)).astype(int)
-                global_end_sample = global_start_sample + chunk_end_sample
-            
-            t2 = time.time()
-            # print(multiplex_group.MultiplexGroupLabel, chunk_start_sample, chunk_end_sample, "metadata", t2 - t1)
-            
-            t1 = time.time()
-            raw_arr = np.frombuffer(cast(bytes, multiplex_group.WaveformData), dtype=dtype).reshape([nsamples, nchannels])
-            t2 = time.time()
-            # print(multiplex_group.MultiplexGroupLabel, chunk_start_sample, chunk_end_sample, "get raw_arr", t2 - t1)
-            
-            # print(raw_arr.shape)
-            for i, name in enumerate(group_channels):
-                if name not in signal_names:
-                    continue
-
-                # if name not in results.keys():
-                #     # results[name] = {}
-                #     # results[name]['chunks'] = []
-                #     results[name] = []
-
-                # unit = channel_def.ChannelSensitivityUnitsSequence[0].CodeValue
-                # gain = 1.0 / channel_def.ChannelSensitivityCorrectionFactor
-                # results[name]['units'] = unit
-                # results[name]['samples_per_second'] = multiplex_group.SamplingFrequency
-                t1 = time.time()
-                mask = (raw_arr[chunk_start_sample:chunk_end_sample, i] == self.PaddingValue)
-                arr_i = raw_arr[chunk_start_sample:chunk_end_sample, i].astype(self.MemoryDataType, copy=False) * float(correction_factors[i])             # out of bounds.  so exclude.)
-                # arr_i = [ x * float(correction_factors[i]) for x in raw_arr[chunk_start_sample:chunk_end_sample, i] ]
-                arr_i[mask] = np.nan
-                # arr_i[arr_i <= float(self.PaddingValue) ] = np.nan
-                # arr_i = arr_i * float(correction_factors[i])
-                t2 = time.time()
-                # print("convert ", name, " to float.", t2 - t1, start_t, end_t, start_time, end_time)
+        # each should use a different padding value.
+        output = {}
+        
+        for instance in fs:
+            # print("Reading ", instance.path)
+            # open the file
+            with open(instance.path, 'rb') as fobj:
+                t3 = time.time()
+                ds = dcmread(fobj, defer_size = 100, specific_tags = ['WaveformSequence', 
+                        "MultiplexGroupTimeOffset",
+                        "NumberOfWaveformChannels",
+                        "SamplingFrequency",
+                        "NumberOfWaveformSamples",
+                        "MultiplexGroupLabel",
+                        "WaveformPaddingValue",
+                        "ChannelDefinitionSequence",
+                        "ChannelSourceSequence",
+                        "CodeMeaning",
+                        ])
+                seqs_raw = dcm_reader.get_tag(fobj, ds, 'WaveformSequence', defer_size = 100)
                 
-                # chunk = {'start_time': chunk_start_t, 'end_time': chunk_end_t, 
-                #                              'start_sample': global_start_sample, 'end_sample': global_end_sample,
-                #                              'gain': gain, 'samples': arr_i}
-                # results[name]['chunks'].append(chunk)
-                results[name].append(arr_i)
-                
-        for name in results.keys():
-            if ( len(results[name]) > 0):
-                results[name] = np.concatenate(results[name])
+                t4 = time.time()
+                d5 = t4 - t3
 
-        return results
+                t3 = time.time()
+                seqs = cast(list[Dataset], seqs_raw)
+                arrs = {}
+                for group_idx, seq in enumerate(seqs):
+                    channel_infos = dcm_reader.get_waveform_seq_info(fobj, seq)  # get channel info
+
+                    if len(channel_infos) == 0:
+                        continue
+                    
+                    # compute start and end offsets in the file using timestamps
+                    freq = channel_infos[0]['freq']
+                    max_len = int(np.round(end_time * freq)) - int(np.round(start_time * freq))
+
+                    # get multiplex group time window
+                    gstart = channel_infos[0]['start_time']
+                    nsamples = channel_infos[0]['number_samples']
+                    gend = np.round(float(gstart) + float(nsamples) / freq, decimals=4)
+                    start_offset = 0 if start_time <= gstart else int(np.round((start_time - gstart) * freq))
+                    end_offset = nsamples if end_time >= gend else int(np.round((end_time - gstart) * freq))
+                    # compute the start and end offset in the output for this channel
+                    target_start = 0 if gstart <= start_time else int(np.round((gstart - start_time) * freq))
+                    target_end = max_len if end_time <= gend else int(np.round((gend - start_time) * freq))
+
+
+                    # get info about the each channel present.
+                    for info in channel_infos:
+                        channel = info['channel']
+                        if (channel in signal_names) and (gstart <= float(end_time)) and (gend >= float(start_time)):
+                            channel_idx = info['channel_idx']
+                            # load the data if never read.  else use cached..
+                            if group_idx not in arrs.keys():
+                                item = cast(Dataset, seq)
+                                arrs[group_idx] = dcm_reader.get_multiplex_array(fobj, item, start_offset, end_offset, as_raw = False)
+                        
+                            # init the output if not previously allocated
+                            if channel not in output.keys():
+                                output[channel] = np.full(shape = max_len, fill_value = np.nan, dtype=np.float64)
+
+                            output[channel][target_start:target_end] = arrs[group_idx][channel_idx, :]
+            
+        t2 = time.time()
+        d3 = t2 - t1
+        # print("time: (read, metadata, array) = (", d1, d2, d3, ")")
+
+        # now return output.
+        return output
 
 
 # dicom value types are constrained by IOD type
 # https://dicom.nema.org/medical/dicom/current/output/chtml/part03/PS3.3.html
-class DICOMFormat32(BaseDICOMFormat):
-    WaveformSampleInterpretation = 'SL'
-    WaveformBitsAllocated = 32
-    WaveformSampleValueRepresentation = 'SL'  # scalp EEG https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_A.34.12.4.6.html
-        # electromyogram, electrooculogram, sleep EEG, multichannel repiratory signals, general32bit ECG
-    PaddingValue = -2147483648
-    FileDatatype = np.int32
-    MemoryDataType = np.float32
+
+
     
-class DICOMFormat16(BaseDICOMFormat):
-    WaveformSampleInterpretation = 'SS'
-    WaveformBitsAllocated = 16
-    WaveformSampleValueRepresentation = 'SS'  # all waveforms, except basic audio  https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_A.34.3.4.8.html
-    PaddingValue = -32768
-    FileDatatype = np.int16
-    MemoryDataType = np.float32
+class DICOMHighBits(BaseDICOMFormat):
+    # waveform lead names to dicom IOD mapping.   Incomplete.
+    # avoiding 12 lead ECG because of the limit in number of samples.
+
+    writer = dcm_writer.DICOMWaveformWriter()
+    chunkSize = None # adaptive
     
+    def make_iod(self, iod_name: str):
+        if iod_name == "GeneralECGWaveform":
+            return dcm_writer.GeneralECGWaveform(hifi = True)
+        elif iod_name == "ArterialPulseWaveform":
+            return dcm_writer.ArterialPulseWaveform(hifi = True)
+        elif iod_name == "RespiratoryWaveform":
+            return dcm_writer.RespiratoryWaveform(hifi = True, num_channels=1)
+        else:
+            raise ValueError("Unknown IOD")
+
     
-class DICOMFormat8(BaseDICOMFormat):
-    WaveformSampleInterpretation = 'UB'
-    WaveformBitsAllocated = 8
-    WaveformSampleValueRepresentation = 'UB' # fixed body position waveform, basic audio (also MB and AB)
-    PaddingValue = 0
-    FileDatatype = np.int8
-    MemoryDataType = np.float32
+class DICOMLowBits(BaseDICOMFormat):
+
+    writer = dcm_writer.DICOMWaveformWriter()
+    chunkSize = None  # adaptive
     
-class DICOMFormat8(BaseDICOMFormat):
-    WaveformSampleInterpretation = 'SB'
-    WaveformBitsAllocated = 8
-    WaveformSampleValueRepresentation = 'SB' # respiratory, gneral audio, realtime audio, ambulatory ECG, arterial pulse
-    PaddingValue = -127
-    FileDatatype = np.int8
-    MemoryDataType = np.float32
+    def make_iod(self, iod_name: str):
+        if iod_name == "GeneralECGWaveform":
+            return dcm_writer.GeneralECGWaveform(hifi=False)
+        elif iod_name == "ArterialPulseWaveform":
+            return dcm_writer.ArterialPulseWaveform(hifi=False)
+        elif iod_name == "RespiratoryWaveform":
+            return dcm_writer.RespiratoryWaveform(hifi=False, num_channels=1)
+        else:
+            raise ValueError("Unknown IOD")
+
+
+class DICOMHighBitsChunked(BaseDICOMFormat):
+    # waveform lead names to dicom IOD mapping.   Incomplete.
+    # avoiding 12 lead ECG because of the limit in number of samples.
+
+    writer = dcm_writer.DICOMWaveformWriter()
+    chunkSize = 86400.0
+
+    def make_iod(self, iod_name: str):
+        if iod_name == "GeneralECGWaveform":
+            return dcm_writer.GeneralECGWaveform(hifi = True)
+        elif iod_name == "ArterialPulseWaveform":
+            return dcm_writer.ArterialPulseWaveform(hifi = True)
+        elif iod_name == "RespiratoryWaveform":
+            return dcm_writer.RespiratoryWaveform(hifi = True, num_channels=1)
+        else:
+            raise ValueError("Unknown IOD")
+
+    
+class DICOMLowBitsChunked(BaseDICOMFormat):
+
+    writer = dcm_writer.DICOMWaveformWriter()
+    chunkSize = 86400.0
+    
+    def make_iod(self, iod_name: str):
+        if iod_name == "GeneralECGWaveform":
+            return dcm_writer.GeneralECGWaveform(hifi=False)
+        elif iod_name == "ArterialPulseWaveform":
+            return dcm_writer.ArterialPulseWaveform(hifi=False)
+        elif iod_name == "RespiratoryWaveform":
+            return dcm_writer.RespiratoryWaveform(hifi=False, num_channels=1)
+        else:
+            raise ValueError("Unknown IOD")
+        
+        
+
+class DICOMHighBitsMerged(BaseDICOMFormat):
+    # waveform lead names to dicom IOD mapping.   Incomplete.
+    # avoiding 12 lead ECG because of the limit in number of samples.
+
+    writer = dcm_writer.DICOMWaveformWriter()
+    chunkSize = -1
+
+    def make_iod(self, iod_name: str):
+        if iod_name == "GeneralECGWaveform":
+            return dcm_writer.GeneralECGWaveform(hifi = True)
+        elif iod_name == "ArterialPulseWaveform":
+            return dcm_writer.ArterialPulseWaveform(hifi = True)
+        elif iod_name == "RespiratoryWaveform":
+            return dcm_writer.RespiratoryWaveform(hifi = True, num_channels=1)
+        else:
+            raise ValueError("Unknown IOD")
+
+    
+class DICOMLowBitsMerged(BaseDICOMFormat):
+
+    writer = dcm_writer.DICOMWaveformWriter()
+    chunkSize = -1
+    
+    def make_iod(self, iod_name: str):
+        if iod_name == "GeneralECGWaveform":
+            return dcm_writer.GeneralECGWaveform(hifi=False)
+        elif iod_name == "ArterialPulseWaveform":
+            return dcm_writer.ArterialPulseWaveform(hifi=False)
+        elif iod_name == "RespiratoryWaveform":
+            return dcm_writer.RespiratoryWaveform(hifi=False, num_channels=1)
+        else:
+            raise ValueError("Unknown IOD")
