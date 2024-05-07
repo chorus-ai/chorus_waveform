@@ -18,8 +18,9 @@ import pprint
 
 import warnings
 # warnings.filterwarnings("error")
-from pydicom.fileset import FileSet
+from pydicom.fileset import FileSet, RecordNode
 
+from pydicom.tag import Tag
 from waveform_benchmark.formats.base import BaseFormat
 import waveform_benchmark.formats.dcm_utils.dcm_waveform_writer as dcm_writer
 import waveform_benchmark.formats.dcm_utils.dcm_waveform_reader as dcm_reader
@@ -443,7 +444,7 @@ class BaseDICOMFormat(BaseFormat):
         #========== now write out =============
         
         # the format of output of split-chunks
-        # { (iod, group, file_id): {start_t, end_t, {(channel, chunk_id) : group, ...}}}
+        # { (iod, freq_id, file_id): {start_t, end_t, {(channel, chunk_id) : group, ...}}}
         for (iod_name, freq_id, file_id), chunk_info in subchunks1.items():
             # print("writing ", iod_name, ", ", file_id)
             
@@ -463,11 +464,58 @@ class BaseDICOMFormat(BaseFormat):
             
             # Save DICOM file.  write_like_original is required
             # these the initial path when added - it points to a temp file.
-            instance = fs.add(dicom)
+            # instance = fs.add(dicom)
+
+            # Add private tags to the WAVEFORM directory record to help with faster access.
+            record = Dataset()
+            record.DirectoryRecordType = "WAVEFORM"
+            record.ReferencedSOPInstanceUIDInFile = dicom.SOPInstanceUID
+            record.InstanceNumber = dicom.InstanceNumber
+            record.ContentDate = dicom.ContentDate
+            record.ContentTime = dicom.ContentTime
+            block = record.private_block(0x0099, "CHORUS_AI", create=True)
+            
+            # gather metadata from dicom.  to keep as same order, must not use set
+            channel_info = []
+            group_info =[]
+            for seq_id, seq in enumerate(dicom.WaveformSequence):
+                freq = seq.SamplingFrequency
+                nsample = seq.NumberOfWaveformSamples
+                stime = cast(float, seq.MultiplexGroupTimeOffset) / 1000.0
+                group_info.append({'freq': freq, 'number_samples': nsample, 'start_time': stime})
+                
+                for chan_id, ch in enumerate(seq.ChannelDefinitionSequence):
+                    channel_info.append({'channel': ch.ChannelSourceSequence[0].CodeMeaning, 
+                                         'group_idx': seq_id,
+                                         'channel_idx': chan_id})
+            
+            # print("GROUPS: ", group_info)
+            # print("CHANNELS: ", channel_info)
+            channel_names = [x['channel'] for x in channel_info]
+            group_ids = [str(x['group_idx']) for x in channel_info ]
+            channel_ids = [str(x['channel_idx']) for x in channel_info]
+            freqs = [str(x['freq']) for x in group_info]
+            nsamples = [str(x['number_samples']) for x in group_info]
+            stimes = [x['start_time'] for x in group_info]
+            
+            block.add_new(0x21, "LO", ",".join(channel_names)) # all channels   (0099 1021)
+            block.add_new(0x22, "LO", ",".join(group_ids)) # group of each channel   (0099 1022)
+            block.add_new(0x23, "LO", ",".join(channel_ids)) # id of channel in its group   (0099 1023)
+            
+            block.add_new(0x11, "LO", ",".join(freqs)) # group's frequencies   (0099 1011)  
+            block.add_new(0x12, "LO", ",".join(nsamples)) # groups' sample count   (0099 1012)   
+
+            stime_str = str(min(stimes))
+            stime_str = stime_str if len(stime_str) <= 16 else stime_str[:16]
+            block.add_new(0x01, "DS", stime_str) # file seqs start time   (0099 1001)   // use same VR as MultiplexGroupTimeOffset
+            # block.add_new(0x02, "FL", chunk_info['end_t']) # file seqs end time   (0099 1002)
+            
+            wave_node = RecordNode(record)
+            
+            instance = fs.add_custom(dicom, leaf = wave_node)
 
             # dcm_path = prefix + "_" + str(file_id) + ext
             # dicom.save_as(dcm_path, write_like_original=False)    
-            # dicom.save_as("/mnt/c/Users/tcp19/Downloads/Compressed/test_waveform.dcm", write_like_original=False)
 
         # ========= and create dicomdir file ====
         # ideally - dicomdir file should have a list of channels inside, and the start and end time stamps.
@@ -484,6 +532,7 @@ class BaseDICOMFormat(BaseFormat):
     def read_waveforms(self, path, start_time, end_time, signal_names):
         # have to read the whole data set each time if using dcmread.  this is not efficient.
         
+        signal_set = set(signal_names)
         # ========== read from dicomdir file
         # ideally - each file should have a list of channels inside, and the start and end time stamps.
         # but we may have to open each file and read to gather that info
@@ -491,9 +540,48 @@ class BaseDICOMFormat(BaseFormat):
         # then random access to read.
         t1 = time.time()
     
-        ds = dcmread(path + "/DICOMDIR", defer_size = 1000)
-        fs = FileSet(ds)
-    
+        ds = dcmread(path + "/DICOMDIR")
+        
+        file_info = {}
+        for item in ds.DirectoryRecordSequence:
+            # if there is private tag data, use it.
+            
+            if (item.DirectoryRecordType == "WAVEFORM") and (Tag(0x0099, 0x1001) in item) :
+                
+                # keep same order, do not use set
+                stime = cast(float, item[0x0099, 0x1001].value)
+                freqs = [float(x) for x in str.split(item[0x0099, 0x1011].value, sep = ',')]
+                samples = [int(x) for x in str.split(item[0x0099, 0x1012].value, sep = ',')]
+                etime = stime + float(samples[0]) / freqs[0]
+                                
+                channels = str.split(item[0x0099, 0x1021].value, sep = ',')
+                
+                any_channels_present = np.any([x in signal_set for x in channels])
+                if any_channels_present and (stime <= float(end_time)) and (etime >= float(start_time)):
+
+                    group_ids = [ int(x) for x in str.split(item[0x0099, 0x1022].value, sep = ',')]
+                    chan_ids = [int(x) for x in str.split(item[0x0099, 0x1023].value, sep = ',')]
+
+                    # only add key if this is a file to be opened.
+                    file_info[item.ReferencedFileID] = {}
+                    for i, chan in enumerate(channels):
+                        group_id = group_ids[i]
+                        if str(group_id) not in file_info[item.ReferencedFileID].keys():
+                            file_info[item.ReferencedFileID][str(group_id)] = []
+                            
+                        channel_info = {
+                                        'channel': chan,
+                                        'channel_idx': chan_ids[i],
+                                        'freq': freqs[group_id],
+                                        'number_samples': samples[group_id],
+                                    'start_time': stime,
+                                    'end_time': etime}
+                        file_info[item.ReferencedFileID][str(group_id)].append(channel_info)
+            else:
+                # no metadata, so add mapping of None to indicate need to read metadata from file
+                file_info[item.ReferencedFileID] = None
+        
+        
         t2 = time.time()
         d1 = t2 - t1
         t1 = time.time()
@@ -503,50 +591,58 @@ class BaseDICOMFormat(BaseFormat):
         
         # each should use a different padding value.
         output = {}
-        
-        for instance in fs:
-            # print("Reading ", instance.path)
-            # open the file
-            with open(instance.path, 'rb') as fobj:
-                t3 = time.time()
-                ds = dcmread(fobj, defer_size = 100, specific_tags = ['WaveformSequence', 
-                        "MultiplexGroupTimeOffset",
-                        "NumberOfWaveformChannels",
+        info_tags = ["WaveformSequence",
+                     "MultiplexGroupTimeOffset",
                         "SamplingFrequency",
-                        "NumberOfWaveformSamples",
-                        "MultiplexGroupLabel",
                         "WaveformPaddingValue",
                         "ChannelDefinitionSequence",
                         "ChannelSourceSequence",
                         "CodeMeaning",
-                        ])
-                seqs_raw = dcm_reader.get_tag(fobj, ds, 'WaveformSequence', defer_size = 100)
+                        ]
+        for file_name, finfo in file_info.items():
+            fn = path + "/" + file_name
+            
+            read_meta_from_file = (finfo is None)
+            
+            with open(fn, 'rb') as fobj:
+                
+                # open the file
+                t3 = time.time()
+                ds = dcmread(fobj, defer_size = 1000, specific_tags = info_tags)
+                seqs_raw = dcm_reader.get_tag(fobj, ds, 'WaveformSequence', defer_size = 1000)
+                seqs = cast(list[Dataset], seqs_raw)
                 
                 t4 = time.time()
                 d5 = t4 - t3
 
                 t3 = time.time()
-                seqs = cast(list[Dataset], seqs_raw)
                 arrs = {}
                 for group_idx, seq in enumerate(seqs):
-                    channel_infos = dcm_reader.get_waveform_seq_info(fobj, seq)  # get channel info
+                    
+                    if read_meta_from_file:                    
+                        # get the file metadata (can be saved in DICOMDIR in the future, but would need to change the channel metadata info.)
+                        channel_infos = dcm_reader.get_waveform_seq_info(fobj, seq)  # get channel info
+                    else:
+                        channel_infos = finfo[str(group_idx)]
+
 
                     if len(channel_infos) == 0:
                         continue
                     
                     # compute start and end offsets in the file using timestamps
-                    freq = channel_infos[0]['freq']
+                    freq = float(channel_infos[0]['freq'])
                     max_len = int(np.round(end_time * freq)) - int(np.round(start_time * freq))
 
                     # get multiplex group time window
-                    gstart = channel_infos[0]['start_time']
-                    nsamples = channel_infos[0]['number_samples']
+                    gstart = float(channel_infos[0]['start_time'])
+                    nsamples = int(channel_infos[0]['number_samples'])
                     gend = np.round(float(gstart) + float(nsamples) / freq, decimals=4)
-                    start_offset = 0 if start_time <= gstart else int(np.round((start_time - gstart) * freq))
-                    end_offset = nsamples if end_time >= gend else int(np.round((end_time - gstart) * freq))
+
+                    start_offset = 0 if start_time <= gstart else int(np.round((start_time * freq) - (gstart * freq)))
+                    end_offset = nsamples if end_time >= gend else int(np.round((end_time * freq) - (gstart * freq)))
                     # compute the start and end offset in the output for this channel
-                    target_start = 0 if gstart <= start_time else int(np.round((gstart - start_time) * freq))
-                    target_end = max_len if end_time <= gend else int(np.round((gend - start_time) * freq))
+                    target_start = 0 if gstart <= start_time else int(np.round((gstart * freq) - (start_time * freq)))
+                    target_end = max_len if end_time <= gend else int(np.round((gend * freq) - (start_time * freq)))
 
 
                     # get info about the each channel present.
@@ -563,11 +659,14 @@ class BaseDICOMFormat(BaseFormat):
                             if channel not in output.keys():
                                 output[channel] = np.full(shape = max_len, fill_value = np.nan, dtype=np.float64)
 
+                            # copy the data to the output
+                            # print("copy ", arrs[group_idx].shape, " to ", output[channel].shape, 
+                            #       " from ", target_start, " to ", target_end)
                             output[channel][target_start:target_end] = arrs[group_idx][channel_idx, :]
-            
+        
         t2 = time.time()
         d3 = t2 - t1
-        # print("time: (read, metadata, array) = (", d1, d2, d3, ")")
+        # print("time: ", path, " (read, metadata, array) = (", d1, d3, ")")
 
         # now return output.
         return output
