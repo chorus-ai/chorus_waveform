@@ -99,16 +99,38 @@ import waveform_benchmark.formats.dcm_utils.dcm_waveform_reader as dcm_reader
 # MultichannelRespiratoryWaveform: RESP, >1, , unconstrained, DCID 3005 “Respiration Waveform” , SS/SL
 # 
 
+
 CHANNEL_TO_DICOM_IOD = {
     "I":  dcm_writer.GeneralECGWaveform,
     "II":  dcm_writer.GeneralECGWaveform,
     "III":  dcm_writer.GeneralECGWaveform,
     "V":  dcm_writer.GeneralECGWaveform,
+    "V2": dcm_writer.GeneralECGWaveform,
+    "V5": dcm_writer.GeneralECGWaveform,
     "aVR":  dcm_writer.GeneralECGWaveform,
+    "ECG": dcm_writer.GeneralECGWaveform,
     "Pleth":  dcm_writer.ArterialPulseWaveform,
     "Resp":  dcm_writer.RespiratoryWaveform,
+    "CO2": dcm_writer.RespiratoryWaveform,
+    "CVP": dcm_writer.HemodynamicWavaform,
+    "PAP": dcm_writer.HemodynamicWavaform,
+    "ABP": dcm_writer.HemodynamicWavaform,
+    "Ao": dcm_writer.HemodynamicWavaform,
+    "MCL": dcm_writer.GeneralECGWaveform,
+    "ICP": dcm_writer.HemodynamicWavaform,
+    "F3-M2": dcm_writer.SleepEEGWaveform,
+    "F4-M1": dcm_writer.SleepEEGWaveform,
+    "C3-M2": dcm_writer.SleepEEGWaveform,
+    "C4-M1": dcm_writer.SleepEEGWaveform,
+    "O1-M2": dcm_writer.SleepEEGWaveform,
+    "O2-M1": dcm_writer.SleepEEGWaveform,
+    "E1-M2": dcm_writer.SleepEEGWaveform,
+    "Chin1-Chin2": dcm_writer.ElectromyogramWaveform,
+    "ABD": dcm_writer.RespiratoryWaveform,
+    "CHEST": dcm_writer.RespiratoryWaveform,
+    "AIRFLOW": dcm_writer.RespiratoryWaveform,
+    "SaO2": dcm_writer.ArterialPulseWaveform,
 }
-
 
 
 class BaseDICOMFormat(BaseFormat):
