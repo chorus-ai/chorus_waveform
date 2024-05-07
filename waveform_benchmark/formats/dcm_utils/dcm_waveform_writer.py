@@ -52,10 +52,10 @@ from waveform_benchmark.formats.base import BaseFormat
 #   4. each wave segment is its own file.  1 and 2 still valid questions.  would speed up random access.
 #   choose 1.  waveform sequence ordered by time.  compatible with 4.
 
-# TODO: may need to separate channels that are not ECGs in other files.
-# TODO: private tags for speeding up metadata access while still maintain compatibility?  this would provide "what do we have", and not necessarily "where is it in the file"
+# TODO: [x] may need to separate channels that are not ECGs in other files.
+# TODO: [x] private tags for speeding up metadata access while still maintain compatibility?  this would provide "what do we have", and not necessarily "where is it in the file"
 # TODO: compression - in transfer syntax?  likely not standards compliant.
-# TODO: random access support?
+# TODO: [x] random access support?
 # DONE: fix the nans...
 
 # data:  channels grouped in to multiplex groups by standard spec.
@@ -99,10 +99,10 @@ class DICOMWaveform32(DICOMWaveformVR):
 # relevant definitions:
 # name: modality name, maximum sequences, grouping, SOPUID, max samples, sampling frequency, source, datatype, 
 # TwelveLeadECGWaveform:  ECG, 1-5, {1: I,II,III; 2: aVR, aVL, aVF; 3: V1, V2, V3; 4: V4, V5, V6; 5: II}, 16384, 200-1000, DCID 3001 “ECG Lead”, SS
-# GeneralECGWaveform: ECG, 1-4, 1-24 per serquence, ?, 200-1000, DCID 3001 “ECG Lead”, SS
-# General32BitECGWaveform: ECG, 1-4, 1-24 per serquence, ?, by confirmance statement, DCID 3001 “ECG Lead”, SL
-# AmbulatoryECGWaveform:  ECG, 1, 1-12, maxsize of wvaeform data attribute, 50-1000, DCID 3001 “ECG Lead”, SB/SS
-# HemodynamicWaveform: HD, 1-4, 1-8, maxsize of wvaeform data attribute, <400, , SS
+# GeneralECGWaveform: ECG, 1-4, 1-24 per sequence, ?, 200-1000, DCID 3001 “ECG Lead”, SS
+# General32BitECGWaveform: ECG, 1-4, 1-24 per sequence, ?, by conformance statement, DCID 3001 “ECG Lead”, SL
+# AmbulatoryECGWaveform:  ECG, 1, 1-12, maxsize of waveform data attribute, 50-1000, DCID 3001 “ECG Lead”, SB/SS
+# HemodynamicWaveform: HD, 1-4, 1-8, maxsize of waveform data attribute, <400, , SS
 # CardiacElectrophysiologyWaveform: EPS, 1-4, , <=20000, DCID 3011 “Electrophysiology Anatomic Location” , SS
 # ArterialPulseWaveform: HD, 1, 1, ? , <600, DCID 3004 “Arterial Pulse Waveform” , SB/SS
 # RespiratoryWaveform: RESP, 1, 1, ? , <100, DCID 3005 “Respiration Waveform”, SB/SS
@@ -153,7 +153,7 @@ class TwelveLeadECGWaveform(DICOMWaveformIOD):
         "aVF": {'group' : 2, 'scheme': 'MDC', 'value': '2:64', 'meaning': 'aVF, augmented voltage, foot'},
     }
     
-    
+# 4 groups, 1 to 24 channels each. unknown sample count limit., f in 200-1000
 class GeneralECGWaveform(DICOMWaveformIOD):
     def __init__(self, hifi: bool = False, num_channels: int = None):
         if hifi:
@@ -178,6 +178,8 @@ class GeneralECGWaveform(DICOMWaveformIOD):
         "aVR": {'group' : 2, 'scheme': 'MDC', 'value': '2:62', 'meaning': 'aVR, augmented voltage, right'},
         "aVL": {'group' : 2, 'scheme': 'MDC', 'value': '2:63', 'meaning': 'aVL, augmented voltage, left'},
         "aVF": {'group' : 2, 'scheme': 'MDC', 'value': '2:64', 'meaning': 'aVF, augmented voltage, foot'},
+        "MCL": {'group' : 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'MCL, mock circulatory loop'},
+        "ECG": {'group' : 4, 'scheme': 'unknown', 'value': '0', 'meaning': 'ECG, Generic ECG lead'},
     }
     
 
@@ -204,6 +206,7 @@ class CardiacElectrophysiologyWaveform(DICOMWaveformIOD):
         'EPS': {'group': 1},
     }
 
+# max 4 sequences, up to 8 channels each, num of samples limited by waveform maxsize. f < 400,
 class HemodynamicWavaform(DICOMWaveformIOD):
     def __init__(self, hifi: bool = False, num_channels: int = None):
         pass
@@ -212,10 +215,15 @@ class HemodynamicWavaform(DICOMWaveformIOD):
     storage_uid = uid.HemodynamicWaveformStorage
     modality = 'HD'
     channel_coding = {
-        'HD': {'group': 1},
+        "CVP": {'group' : 1, 'scheme': 'unknown', 'value': '0', 'meaning': 'Central Venous Pressure'},
+        "PAP": {'group' : 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'Pulmonary Arterial Pressure'},
+        "ABP": {'group' : 3, 'scheme': 'unknown', 'value': '0', 'meaning': 'Ambulatory Blood Pressure'},
+        "Ao":  {'group' : 4, 'scheme': 'unknown', 'value': '0', 'meaning': 'Aortic Pressure'},
+        "ICP": {'group' : 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'Intracranial Pressure'},
     }
 
     
+# max 1 sequence, 1 wave each. unknown sample count limit. f < 600.
 class ArterialPulseWaveform(DICOMWaveformIOD):
     def __init__(self, hifi: bool = False, num_channels: int = None):
         # if hifi:
@@ -231,10 +239,12 @@ class ArterialPulseWaveform(DICOMWaveformIOD):
     channel_coding = {
         # to fix.
         'Pleth': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-00', 'meaning': 'Plethysmogram'},
-        'PLETH': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-00', 'meaning': 'Plethysmogram'}
+        'PLETH': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-00', 'meaning': 'Plethysmogram'},
+        'SaO2': {'group': 1, 'scheme': 'unknown', 'value': '0', 'meaning': 'Arterial O2 Saturation'}
     }
 
     
+# different IOD for multiple channels.  1 multplex group, 1 channel each. unknown sample count limit. f < 100.
 class RespiratoryWaveform(DICOMWaveformIOD):
     def __init__(self, hifi: bool = False, num_channels: int = None):
         if num_channels <= 1:
@@ -255,7 +265,11 @@ class RespiratoryWaveform(DICOMWaveformIOD):
     modality = 'RESP'
     channel_coding = {
         'RESP': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-01', 'meaning': 'Respiration'},
-        'Resp': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-01', 'meaning': 'Respiration'}
+        'Resp': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-01', 'meaning': 'Respiration'},
+        'ABD' : {'group': 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'Respiration'},
+        'CHEST' : {'group': 3, 'scheme': 'unknown', 'value': '1', 'meaning': 'Respiration'},
+        'AIRFLOW' : {'group': 4, 'scheme': 'unknown', 'value': '2', 'meaning': 'Respiration'},        
+        'CO2' : {'group': 4, 'scheme': 'unknown', 'value': '3', 'meaning': 'CO2 Concentration/Partial Pressure'},
     }
         
 class RoutineScalpEEGWaveform(DICOMWaveformIOD):
@@ -271,6 +285,7 @@ class RoutineScalpEEGWaveform(DICOMWaveformIOD):
         'EEG': {'group': 1},
     }
 
+# unlimited number of multiplex groups, up to 64 channels each.  sample size and f unconstrained.
 class SleepEEGWaveform(DICOMWaveformIOD):
     def __init__(self, hifi: bool = False, num_channels: int = None):
         if hifi:
@@ -281,9 +296,16 @@ class SleepEEGWaveform(DICOMWaveformIOD):
     storage_uid = uid.SleepElectroencephalogramWaveformStorage
     modality = 'EEG'
     channel_coding = {
-        'EEG': {'group': 1},
+        "F3-M2": {'group': 1, 'scheme': 'unknown', 'value': '1', 'meaning': 'F3-M2 EEG lead'},
+        "F4-M1": {'group': 1, 'scheme': 'unknown', 'value': '2', 'meaning': 'F4-M1 EEG lead'},
+        "C3-M2": {'group': 1, 'scheme': 'unknown', 'value': '3', 'meaning': 'C3-M2 EEG lead'},
+        "C4-M1": {'group': 1, 'scheme': 'unknown', 'value': '4', 'meaning': 'C4-M1 EEG lead'},
+        "O1-M2": {'group': 1, 'scheme': 'unknown', 'value': '5', 'meaning': 'O1-M2 EEG lead'},
+        "O2-M1": {'group': 1, 'scheme': 'unknown', 'value': '6', 'meaning': 'O2-M1 EEG lead'},
+        "E1-M2": {'group': 1, 'scheme': 'unknown', 'value': '7', 'meaning': 'E1-M2 EEG lead'},
     }
     
+#unlimited multiplex groups, up to 64 channels each.  sample size and f unconstrained.
 class ElectromyogramWaveform(DICOMWaveformIOD):
     def __init__(self, hifi: bool = False, num_channels: int = None):
         if hifi:
@@ -294,7 +316,7 @@ class ElectromyogramWaveform(DICOMWaveformIOD):
     storage_uid = uid.ElectromyogramWaveformStorage
     modality = 'EMG'
     channel_coding = {
-        'EMG': {'group': 1},
+        'Chin1-Chin2': {'group': 1, 'scheme': 'unknown', 'value': '1', 'meaning': '??'},
     }
 
 
