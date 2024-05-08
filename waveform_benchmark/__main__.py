@@ -4,6 +4,7 @@ import os
 import sys
 
 import pandas as pd
+from tqdm import tqdm
 
 from waveform_benchmark.benchmark import run_benchmarks
 
@@ -102,7 +103,7 @@ def main():
 
         format_list, waveform_list, test_list, result_list = init_summary_file(opts.waveform_suite_summary_file)
 
-        for waveform_file in waveform_suite:
+        for waveform_file in tqdm(waveform_suite):
             record = waveform_file[0]
             format = waveform_file[1]
             pn_dir = waveform_file[2]
