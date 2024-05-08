@@ -4,7 +4,7 @@ import importlib
 import os
 import random
 import tempfile
-import time
+
 import numpy as np
 
 from waveform_benchmark.input import load_wfdb_signals
@@ -13,7 +13,17 @@ from waveform_benchmark.utils import repeat_test
 from waveform_benchmark.utils import median_attr
 
 
-def run_benchmarks(input_record, format_class, pn_dir=None):
+def append_result(format_name, waveform_name, test_name, result, format_list, waveform_list, test_list, result_list):
+    format_list.append(format_name)
+    waveform_list.append(waveform_name)
+    test_list.append(test_name)
+    result_list.append(result)
+
+    return format_list, waveform_list, test_list, result_list
+
+
+def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, waveform_list=None, test_list=None,
+                   result_list=None):
     # Load the class we will be testing
     module_name, class_name = format_class.rsplit('.', 1)
     module = importlib.import_module(module_name)
@@ -21,7 +31,10 @@ def run_benchmarks(input_record, format_class, pn_dir=None):
 
     # Load the example data
     input_record = input_record.removesuffix('.hea')
-    waveforms = load_wfdb_signals(input_record, pn_dir)
+    if pn_dir:
+        waveforms = load_wfdb_signals(input_record, pn_dir)
+    else:
+        waveforms = load_wfdb_signals(input_record)
     all_channels = list(waveforms.keys())
 
     total_length = 0
@@ -106,6 +119,17 @@ def run_benchmarks(input_record, format_class, pn_dir=None):
         print('Time to output: %.0f sec' % pc_write.cpu_seconds)
         print('_' * 64)
 
+        if format_list is not None:
+            # Append output size and write time
+            format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
+                                                                               'output_size',
+                                                                               (output_size / 1024), format_list,
+                                                                               waveform_list, test_list, result_list)
+            format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
+                                                                               'output_time',
+                                                                               pc_write.cpu_seconds, format_list,
+                                                                               waveform_list, test_list, result_list)
+
         # Fidelity Check
         # Loop over each waveform
         print("Fidelity check:")
@@ -184,6 +208,15 @@ def run_benchmarks(input_record, format_class, pn_dir=None):
                      block_count,
                      block_length))
 
+            if format_list is not None:
+                # Append read time result
+                format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
+                                                                                   f'{block_count}_all',
+                                                                                   median_attr(counters, 'cpu_seconds'),
+                                                                                   format_list,
+                                                                                   waveform_list, test_list,
+                                                                                   result_list)
+
         for block_length, block_count in TEST_BLOCK_LENGTHS:
             counters = []
             r = random.Random(12345)
@@ -205,4 +238,16 @@ def run_benchmarks(input_record, format_class, pn_dir=None):
                      block_count,
                      block_length))
 
+            if format_list:
+                format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
+                                                                                   f'{block_count}_one',
+                                                                                   median_attr(counters, 'cpu_seconds'),
+                                                                                   format_list,
+                                                                                   waveform_list, test_list,
+                                                                                   result_list)
+
     print('_' * 64)
+
+    if format_list is not None:
+        # Return the lists with appended results for this waveform
+        return format_list, waveform_list, test_list, result_list
