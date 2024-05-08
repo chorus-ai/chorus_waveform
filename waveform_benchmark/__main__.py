@@ -79,7 +79,7 @@ def main():
                     default=None,
                     help='A csv table with input_record, physionet directory, and format class for multiple files')
     ap.add_argument('--waveform_suite_summary_file', '-w',
-                    default=None,
+                    default='waveform_suite_benchmark_summary.csv',
                     help='Save a CSV summary of the waveform suite run to this path/file')
     opts = ap.parse_args()
 
