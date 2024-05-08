@@ -3,16 +3,6 @@ import vitaldb
 from waveform_benchmark.formats.base import BaseFormat
 
 
-class BaseDevice:
-    def __init__(self, name, typename='', port=''):
-        self.name = name
-        if not typename:
-            self.type = name
-        else:
-            self.type = typename
-        self.port = port
-
-
 class VitalFormat(BaseFormat):
 
     def write_waveforms(self, path, waveforms):
@@ -36,29 +26,30 @@ class VitalFormat(BaseFormat):
                 vitalfile.dtend = max(vitalfile.dtend, dtend)
                 samples = chunk['samples']
 
-                for istart in range(chunk['start_sample'], chunk['end_sample'], int(srate)):
+                for istart in range(0, len(samples), round(srate)):
                     recs.append({'dt': dtstart + istart / srate,
-                                 'val': samples[istart:istart+int(srate)]})
+                                 'val': samples[istart:istart+round(srate)]})
 
                 gain = max(gain, chunk['gain'])
                 mindisp = min(mindisp, np.nanmin(samples))
                 maxdisp = max(maxdisp, np.nanmax(samples))
 
-            track = vitalfile.add_track(dtname=channel + '/' + channel,
-                                        recs=recs, srate=srate,
-                                        unit=waveform['units'],
-                                        mindisp=mindisp,
-                                        maxdisp=maxdisp)
-            track.gain = gain
-
-            if channel not in vitalfile.devs:
-                vitalfile.devs[channel] = BaseDevice(channel)
+            dtname = f"{channel}/{channel}"
+            if dtname not in vitalfile.trks:
+                track = vitalfile.add_track(dtname=dtname,
+                                            recs=recs, srate=srate,
+                                            unit=waveform['units'],
+                                            mindisp=mindisp,
+                                            maxdisp=maxdisp)
+                track.gain = gain
+            else:
+                vitalfile.trks[dtname].recs.extend(recs)
 
         file_name = f"{path}.vital"
         vitalfile.to_vital(file_name)
 
     def read_waveforms(self, path, start_time, end_time, signal_names):
-        signal_names = [x + '/' + x for x in signal_names]
+        signal_names = [f"{x}/{x}" for x in signal_names]
         file_name = f"{path}.vital"
         vitalfile = vitaldb.VitalFile(file_name, track_names=signal_names)
         vitalfile.crop(start_time, end_time)
@@ -78,7 +69,7 @@ class VitalFormat(BaseFormat):
                     crop_start = round((start_time - dtstart) * trk.srate)
                     rec['dt'] = start_time
                     dtstart = start_time
-                    rec['val'] = rec['val'][crop_start:]        
+                    rec['val'] = rec['val'][crop_start:]
                 st = round((dtstart - start_time) * trk.srate)
                 et = min(round((dtend - start_time) * trk.srate),
                          sample_length)
