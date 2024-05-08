@@ -72,6 +72,9 @@ def main():
     ap.add_argument('--physionet_directory', '-p',
                     default=None,
                     help='The physionet database directory to read the source waveform from')
+    ap.add_argument('--save_output_to_log', '-l',
+                    default=False,
+                    help='Save all of the benchmarking results to a log file')
     ap.add_argument('--waveform_suite_table', '-s',
                     default=None,
                     help='A csv table with input_record, physionet directory, and format class for multiple files')
@@ -79,6 +82,13 @@ def main():
                     default=None,
                     help='Save a CSV summary of the waveform suite run to this path/file')
     opts = ap.parse_args()
+
+    # If log is requested send the output there
+    if opts.save_output_to_log:
+        log_file = open('benchmark_results.log', 'a')
+
+        # Send the output to the log file
+        sys.stdout = log_file
 
     # Check conditions based on the parsed arguments
     if not opts.waveform_suite_table:
@@ -96,7 +106,6 @@ def main():
             record = waveform_file[0]
             format = waveform_file[1]
             pn_dir = waveform_file[2]
-            # summary_file = opts.waveform_suite_summary_file
             format_list, waveform_list, test_list, result_list = run_benchmarks(input_record=record,
                                                                                 format_class=format, pn_dir=pn_dir,
                                                                                 format_list=format_list,
@@ -111,6 +120,10 @@ def main():
         run_benchmarks(input_record=opts.input_record,
                        format_class=opts.format_class,
                        pn_dir=opts.physionet_directory)
+
+    # Close the log file after the run is complete
+    if opts.save_output_to_log:
+        log_file.close()
 
 
 if __name__ == '__main__':
