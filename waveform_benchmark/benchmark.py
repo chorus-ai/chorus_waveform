@@ -3,6 +3,7 @@
 import importlib
 import os
 import random
+import sys
 import tempfile
 
 import numpy as np
@@ -14,6 +15,9 @@ from waveform_benchmark.utils import median_attr
 
 
 def append_result(format_name, waveform_name, test_name, result, format_list, waveform_list, test_list, result_list):
+    """
+    Add a result to the summary lists
+    """
     format_list.append(format_name)
     waveform_list.append(waveform_name)
     test_list.append(test_name)
@@ -24,6 +28,7 @@ def append_result(format_name, waveform_name, test_name, result, format_list, wa
 
 def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, waveform_list=None, test_list=None,
                    result_list=None):
+
     # Load the class we will be testing
     module_name, class_name = format_class.rsplit('.', 1)
     module = importlib.import_module(module_name)
