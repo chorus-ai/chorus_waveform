@@ -73,6 +73,7 @@ class VitalFormat(BaseFormat):
                 st = round((dtstart - start_time) * trk.srate)
                 et = min(round((dtend - start_time) * trk.srate),
                          sample_length)
-                samples[st:et] = rec['val'][:et-st]
+                if et > st:
+                    samples[st:et] = rec['val'][:et-st]
             results[dtname] = samples
         return results
