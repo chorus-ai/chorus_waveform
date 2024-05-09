@@ -117,8 +117,9 @@ UCUM_ENCODING = {
     "bpm": "beats per minute",
     "mmHg": "millimeter of mercury",
     "uV": "microvolt",
-    "NU": "number",
-    "Ohm": "ohm"
+    "NU": "nadir upstroke",
+    "Ohm": "ohm",
+    "%": "percent",
 }
 
 # dicom IODs types
@@ -179,11 +180,10 @@ class GeneralECGWaveform(DICOMWaveformIOD):
         "aVL": {'group' : 2, 'scheme': 'MDC', 'value': '2:63', 'meaning': 'aVL, augmented voltage, left'},
         "aVF": {'group' : 2, 'scheme': 'MDC', 'value': '2:64', 'meaning': 'aVF, augmented voltage, foot'},
         "MCL": {'group' : 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'MCL, mock circulatory loop'},
-        "ECG": {'group' : 4, 'scheme': 'unknown', 'value': '0', 'meaning': 'ECG, Generic ECG lead'},
     }
     
 
-class AmbulatoryECGWavaform(DICOMWaveformIOD):
+class AmbulatoryECGWaveform(DICOMWaveformIOD):
     def __init__(self, hifi: bool = False, num_channels: int = None):
         pass
         
@@ -192,7 +192,7 @@ class AmbulatoryECGWavaform(DICOMWaveformIOD):
     storage_uid = uid.AmbulatoryECGWaveformStorage
     modality = 'ECG'
     channel_coding = {
-        'ECG': {'group': 1},
+        "ECG": {'group' : 4, 'scheme': 'unknown', 'value': '0', 'meaning': 'ECG, Generic ECG lead'},
     }
 
 class CardiacElectrophysiologyWaveform(DICOMWaveformIOD):
@@ -207,7 +207,7 @@ class CardiacElectrophysiologyWaveform(DICOMWaveformIOD):
     }
 
 # max 4 sequences, up to 8 channels each, num of samples limited by waveform maxsize. f < 400,
-class HemodynamicWavaform(DICOMWaveformIOD):
+class HemodynamicWaveform(DICOMWaveformIOD):
     def __init__(self, hifi: bool = False, num_channels: int = None):
         pass
     
@@ -216,10 +216,15 @@ class HemodynamicWavaform(DICOMWaveformIOD):
     modality = 'HD'
     channel_coding = {
         "CVP": {'group' : 1, 'scheme': 'unknown', 'value': '0', 'meaning': 'Central Venous Pressure'},
+        "CVP1": {'group' : 1, 'scheme': 'unknown', 'value': '0', 'meaning': 'Central Venous Pressure'},
+        "CVP2": {'group' : 1, 'scheme': 'unknown', 'value': '0', 'meaning': 'Central Venous Pressure'},
         "PAP": {'group' : 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'Pulmonary Arterial Pressure'},
+        "PA2": {'group' : 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'Pulmonary Arterial Pressure'},
         "ABP": {'group' : 3, 'scheme': 'unknown', 'value': '0', 'meaning': 'Ambulatory Blood Pressure'},
         "Ao":  {'group' : 4, 'scheme': 'unknown', 'value': '0', 'meaning': 'Aortic Pressure'},
         "ICP": {'group' : 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'Intracranial Pressure'},
+        "AR1": {'group' : 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'Aortic Regurgitation Pressure'},
+        "AR2": {'group' : 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'Aortic Regurgitation Pressure'},
     }
 
     
@@ -240,7 +245,8 @@ class ArterialPulseWaveform(DICOMWaveformIOD):
         # to fix.
         'Pleth': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-00', 'meaning': 'Plethysmogram'},
         'PLETH': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-00', 'meaning': 'Plethysmogram'},
-        'SaO2': {'group': 1, 'scheme': 'unknown', 'value': '0', 'meaning': 'Arterial O2 Saturation'}
+        'SaO2': {'group': 1, 'scheme': 'unknown', 'value': '0', 'meaning': 'Arterial O2 Saturation'},
+        'SPO2': {'group': 1, 'scheme': 'unknown', 'value': '0', 'meaning': 'Peripheral Arterial O2 Saturation'}
     }
 
     
@@ -266,6 +272,7 @@ class RespiratoryWaveform(DICOMWaveformIOD):
     channel_coding = {
         'RESP': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-01', 'meaning': 'Respiration'},
         'Resp': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-01', 'meaning': 'Respiration'},
+        'RR': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-01', 'meaning': 'Respiration'},
         'ABD' : {'group': 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'Respiration'},
         'CHEST' : {'group': 3, 'scheme': 'unknown', 'value': '1', 'meaning': 'Respiration'},
         'AIRFLOW' : {'group': 4, 'scheme': 'unknown', 'value': '2', 'meaning': 'Respiration'},        
