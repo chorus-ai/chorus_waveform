@@ -23,11 +23,39 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'adopt'
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install flake8 pytest
           pip install -r requirements.txt
+
+      - name: Discover JVM Path
+        run: |
+          JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+          echo "JAVA_HOME: $JAVA_HOME"
+          if [ -d "$JAVA_HOME/lib/server" ]; then
+            echo "JPY_JVM_DLL=$JAVA_HOME/lib/server/libjvm.so"
+          elif [ -d "$JAVA_HOME/jre/lib/server" ]; then
+            echo "JPY_JVM_DLL=$JAVA_HOME/jre/lib/server/libjvm.so"
+          elif [ -d "$JAVA_HOME/lib/client" ]; then
+            echo "JPY_JVM_DLL=$JAVA_HOME/lib/client/libjvm.so"
+          else
+            echo "libjvm.so not found in usual locations"
+          fi
+
+      - name: Copy .env.example to .env
+        run: cp .env.example .env
+
+      - name: Update .env with JVM DLL Path
+        run: |
+          echo "export JPY_JVM_DLL='/opt/hostedtoolcache/Java_Adopt_jdk/11.0.23-9/x64/lib/server/libjvm.so'" >> .env
+          cat .env  # Optionally display the .env file to verify changes
 
       - name: Find new or modified benchmark files
         id: find-formats
@@ -81,6 +109,10 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            if [ ! -s final_results.txt ]; then
+              echo "No results to post."
+              exit 0
+            fi
             const fs = require('fs');
             const resultContent = fs.readFileSync('final_results.txt', 'utf8');
             await github.rest.issues.createComment({
