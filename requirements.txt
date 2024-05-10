@@ -2,8 +2,10 @@ h5py==3.10.0
 numpy==1.26.4
 pyarrow==16.0.0
 pydicom==2.4.4
+tqdm==4.66.4
 vitaldb==1.4.8
 wfdb==4.1.2
 jpy==0.16.0
 python-dotenv==1.0.1
 zarr==2.17.2
+
