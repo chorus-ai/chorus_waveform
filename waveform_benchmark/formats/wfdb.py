@@ -43,12 +43,15 @@ class BaseWFDBFormat(BaseFormat):
                 sig_samples[start:end] = chunk['samples']
                 sig_gain = max(sig_gain, chunk['gain'])
 
-            if all(numpy.isnan(sig_samples)):
+            # Determine the minimum and maximum non-NaN sample values.
+            # (nanmin and nanmax will give a warning if all values are NaN.)
+            sample_min = numpy.fmin.reduce(sig_samples)
+            sample_max = numpy.fmax.reduce(sig_samples)
+            if numpy.isnan(sample_min):
                 sig_baseline = 0
             else:
-                sample_min = numpy.nanmin(sig_samples)
-                sample_max = numpy.nanmax(sig_samples)
                 sig_baseline = round(-sig_gain * (sample_min + sample_max) / 2)
+
             adc_gain.append(sig_gain)
             baseline.append(sig_baseline)
             e_p_signal.append(sig_samples)
