@@ -472,13 +472,22 @@ class BaseDICOMFormat(BaseFormat):
         
         #========== now write out =============
         
+        # count channels belonging to respiratory data this is needed for the iod
+        count_per_iod = {}
+        for channel in waveforms.keys():
+            iod_name = CHANNEL_TO_DICOM_IOD[channel].__name__
+            if iod_name not in count_per_iod.keys():
+                count_per_iod[iod_name] = 1
+            else:
+                count_per_iod[iod_name] += 1
+        
         # the format of output of split-chunks
         # { (iod, freq_id, file_id): {start_t, end_t, {(channel, chunk_id) : group, ...}}}
         for (iod_name, freq_id, file_id), chunk_info in subchunks1.items():
             # print("writing ", iod_name, ", ", file_id)
             
             # create and iod instance
-            iod = self.make_iod(iod_name)
+            iod = self.make_iod(iod_name, num_channels = count_per_iod[iod_name])
                                                 
             # each multiplex group can have its own frequency
             # but if there are different frequencies for channels in a multiplex group, we need to split.
@@ -713,13 +722,21 @@ class DICOMHighBits(BaseDICOMFormat):
     writer = dcm_writer.DICOMWaveformWriter()
     chunkSize = None # adaptive
     
-    def make_iod(self, iod_name: str):
+    def make_iod(self, iod_name: str, num_channels:int = 1):
         if iod_name == "GeneralECGWaveform":
             return dcm_writer.GeneralECGWaveform(hifi = True)
+        elif iod_name == "AmbulatoryECGWaveform":
+            return dcm_writer.AmbulatoryECGWaveform(hifi = True)
+        elif iod_name == "SleepEEGWaveform":
+            return dcm_writer.SleepEEGWaveform(hifi = True)
+        elif iod_name == "ElectromyogramWaveform":
+            return dcm_writer.ElectromyogramWaveform(hifi = True)
         elif iod_name == "ArterialPulseWaveform":
             return dcm_writer.ArterialPulseWaveform(hifi = True)
         elif iod_name == "RespiratoryWaveform":
-            return dcm_writer.RespiratoryWaveform(hifi = True, num_channels=1)
+            return dcm_writer.RespiratoryWaveform(hifi = True, num_channels=num_channels)
+        elif iod_name == "HemodynamicWaveform":
+            return dcm_writer.HemodynamicWaveform(hifi = True)
         else:
             raise ValueError("Unknown IOD")
 
@@ -729,81 +746,49 @@ class DICOMLowBits(BaseDICOMFormat):
     writer = dcm_writer.DICOMWaveformWriter()
     chunkSize = None  # adaptive
     
-    def make_iod(self, iod_name: str):
+    def make_iod(self, iod_name: str, num_channels:int = 1):
         if iod_name == "GeneralECGWaveform":
             return dcm_writer.GeneralECGWaveform(hifi=False)
+        elif iod_name == "AmbulatoryECGWaveform":
+            return dcm_writer.AmbulatoryECGWaveform(hifi = False)
+        elif iod_name == "SleepEEGWaveform":
+            return dcm_writer.SleepEEGWaveform(hifi = False)
+        elif iod_name == "ElectromyogramWaveform":
+            return dcm_writer.ElectromyogramWaveform(hifi = False)
         elif iod_name == "ArterialPulseWaveform":
             return dcm_writer.ArterialPulseWaveform(hifi=False)
         elif iod_name == "RespiratoryWaveform":
-            return dcm_writer.RespiratoryWaveform(hifi=False, num_channels=1)
+            return dcm_writer.RespiratoryWaveform(hifi=False, num_channels=num_channels)
+        elif iod_name == "HemodynamicWaveform":
+            return dcm_writer.HemodynamicWaveform(hifi = True)
         else:
             raise ValueError("Unknown IOD")
 
 
-class DICOMHighBitsChunked(BaseDICOMFormat):
+class DICOMHighBitsChunked(DICOMHighBits):
     # waveform lead names to dicom IOD mapping.   Incomplete.
     # avoiding 12 lead ECG because of the limit in number of samples.
 
-    writer = dcm_writer.DICOMWaveformWriter()
-    chunkSize = 86400.0
+    chunkSize = 86400.0  # chunk as 1 day.
 
-    def make_iod(self, iod_name: str):
-        if iod_name == "GeneralECGWaveform":
-            return dcm_writer.GeneralECGWaveform(hifi = True)
-        elif iod_name == "ArterialPulseWaveform":
-            return dcm_writer.ArterialPulseWaveform(hifi = True)
-        elif iod_name == "RespiratoryWaveform":
-            return dcm_writer.RespiratoryWaveform(hifi = True, num_channels=1)
-        else:
-            raise ValueError("Unknown IOD")
+
 
     
-class DICOMLowBitsChunked(BaseDICOMFormat):
+class DICOMLowBitsChunked(DICOMLowBits):
 
-    writer = dcm_writer.DICOMWaveformWriter()
     chunkSize = 86400.0
     
-    def make_iod(self, iod_name: str):
-        if iod_name == "GeneralECGWaveform":
-            return dcm_writer.GeneralECGWaveform(hifi=False)
-        elif iod_name == "ArterialPulseWaveform":
-            return dcm_writer.ArterialPulseWaveform(hifi=False)
-        elif iod_name == "RespiratoryWaveform":
-            return dcm_writer.RespiratoryWaveform(hifi=False, num_channels=1)
-        else:
-            raise ValueError("Unknown IOD")
-        
         
 
-class DICOMHighBitsMerged(BaseDICOMFormat):
+class DICOMHighBitsMerged(DICOMHighBits):
     # waveform lead names to dicom IOD mapping.   Incomplete.
     # avoiding 12 lead ECG because of the limit in number of samples.
 
-    writer = dcm_writer.DICOMWaveformWriter()
     chunkSize = -1
 
-    def make_iod(self, iod_name: str):
-        if iod_name == "GeneralECGWaveform":
-            return dcm_writer.GeneralECGWaveform(hifi = True)
-        elif iod_name == "ArterialPulseWaveform":
-            return dcm_writer.ArterialPulseWaveform(hifi = True)
-        elif iod_name == "RespiratoryWaveform":
-            return dcm_writer.RespiratoryWaveform(hifi = True, num_channels=1)
-        else:
-            raise ValueError("Unknown IOD")
 
     
-class DICOMLowBitsMerged(BaseDICOMFormat):
+class DICOMLowBitsMerged(DICOMLowBits):
 
-    writer = dcm_writer.DICOMWaveformWriter()
     chunkSize = -1
     
-    def make_iod(self, iod_name: str):
-        if iod_name == "GeneralECGWaveform":
-            return dcm_writer.GeneralECGWaveform(hifi=False)
-        elif iod_name == "ArterialPulseWaveform":
-            return dcm_writer.ArterialPulseWaveform(hifi=False)
-        elif iod_name == "RespiratoryWaveform":
-            return dcm_writer.RespiratoryWaveform(hifi=False, num_channels=1)
-        else:
-            raise ValueError("Unknown IOD")
