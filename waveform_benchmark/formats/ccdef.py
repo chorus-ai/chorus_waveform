@@ -41,6 +41,7 @@ class BaseCCDEF(BaseFormat):
                 sig_samples = np.empty(sig_length, dtype=np.short)
                 nanval = -32768
                 sig_samples[:] = nanval
+                max_gain = max(chunk['gain'] for chunk in chunks)
 
                 # TODO: store time as segments of sample, starttime, length
 
@@ -49,10 +50,10 @@ class BaseCCDEF(BaseFormat):
                     end = chunk['end_sample']
 
                     cursamples = np.where(np.isnan(chunk['samples']),
-                                          (nanval*1.0)/chunk["gain"],
+                                          (nanval*1.0)/max_gain,
                                           chunk['samples'])
 
-                    sig_samples[start:end] = np.round(cursamples*chunk["gain"])
+                    sig_samples[start:end] = np.round(cursamples * max_gain)
 
                 if self.fmt == "Compressed":
                     f["Waveforms"].create_dataset(channel,
@@ -67,7 +68,7 @@ class BaseCCDEF(BaseFormat):
                 f["Waveforms"][channel].attrs["uom"] = datadict["units"]
                 f["Waveforms"][channel].attrs["sample_rate"] = datadict["samples_per_second"]
                 f["Waveforms"][channel].attrs["nanvalue"] = nanval
-                f["Waveforms"][channel].attrs["gain"] = chunks[0]["gain"]
+                f["Waveforms"][channel].attrs["gain"] = max_gain
                 f["Waveforms"][channel].attrs["start_time"] = chunks[0]["start_time"]
 
     def read_waveforms(self, path, start_time, end_time, signal_names):
