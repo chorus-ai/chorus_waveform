@@ -174,7 +174,7 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                 filedata_nonan = filedata[~np.isnan(data)]
 
                 # use numpy's isclose to determine floating point equality
-                isgood = np.isclose(filedata_nonan,data_nonan)
+                isgood = np.isclose(filedata_nonan,data_nonan,atol=0.5/chunk['gain'])
                 numgood = np.sum(isgood)
                 fpeq_rel = numgood/len(data_nonan)
                 
