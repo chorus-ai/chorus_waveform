@@ -29,6 +29,11 @@ jobs:
           java-version: '11'
           distribution: 'adopt'
 
+      - name: Install libsndfile library (required by soundfile)
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsndfile1
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
