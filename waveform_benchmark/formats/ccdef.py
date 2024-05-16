@@ -45,6 +45,16 @@ class BaseCCDEF(BaseFormat):
 
                 # TODO: store time as segments of sample, starttime, length
 
+                # Determine the minimum and maximum non-NaN sample values.
+                # (nanmin and nanmax will give a warning if all values are NaN.)
+                rawsamples = np.concatenate([chunk['samples'] for chunk in chunks])
+                sample_min = np.fmin.reduce(rawsamples)
+                sample_max = np.fmax.reduce(rawsamples)
+                if np.isnan(sample_min):
+                    sig_baseline = 0
+                else:
+                    sig_baseline = round(-max_gain * (sample_min + sample_max) / 2)
+
                 for chunk in chunks:
                     start = chunk['start_sample']
                     end = chunk['end_sample']
@@ -53,7 +63,7 @@ class BaseCCDEF(BaseFormat):
                                           (nanval*1.0)/max_gain,
                                           chunk['samples'])
 
-                    sig_samples[start:end] = np.round(cursamples * max_gain)
+                    sig_samples[start:end] = np.round(cursamples * max_gain + sig_baseline)
 
                 if self.fmt == "Compressed":
                     f["Waveforms"].create_dataset(channel,
@@ -69,6 +79,7 @@ class BaseCCDEF(BaseFormat):
                 f["Waveforms"][channel].attrs["sample_rate"] = datadict["samples_per_second"]
                 f["Waveforms"][channel].attrs["nanvalue"] = nanval
                 f["Waveforms"][channel].attrs["gain"] = max_gain
+                f["Waveforms"][channel].attrs["baseline"] = sig_baseline
                 f["Waveforms"][channel].attrs["start_time"] = chunks[0]["start_time"]
 
     def read_waveforms(self, path, start_time, end_time, signal_names):
@@ -90,7 +101,9 @@ class BaseCCDEF(BaseFormat):
 
                 sig_data = f["Waveforms"][channel][start_frame:end_frame] 
                 naninds = (sig_data == f["Waveforms"][channel].attrs["nanvalue"])
-                sig_data = sig_data * 1.0 / f["Waveforms"][channel].attrs["gain"]
+                sig_gain = f["Waveforms"][channel].attrs["gain"]
+                sig_baseline = f["Waveforms"][channel].attrs["baseline"]
+                sig_data = (sig_data.astype(int) - sig_baseline) * 1.0 / sig_gain
                 sig_data[naninds] = np.nan
                 results[channel] = sig_data
 
