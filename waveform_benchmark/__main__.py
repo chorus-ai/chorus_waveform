@@ -104,6 +104,7 @@ def main():
         format_list, waveform_list, test_list, result_list = init_summary_file(opts.waveform_suite_summary_file)
 
         for waveform_file in tqdm(waveform_suite):
+            # Extract metadata from looped file and launch benchmarking
             record = waveform_file[0]
             format = waveform_file[1]
             pn_dir = waveform_file[2]
