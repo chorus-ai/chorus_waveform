@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chorus_waveform"
+version = "1.0.0"
+description = "Waveform benchmarking package for CHoRUS"
+dependencies = [
+    "atriumdb",
+    "h5py",
+    "numpy",
+    "pyarrow",
+    "pydicom",
+    "tqdm",
+    "vitaldb",
+    "wfdb",
+    "jpy",
+    "python-dotenv",
+    "zarr",
+    "soundfile",
+]
