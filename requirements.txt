@@ -8,4 +8,4 @@ wfdb==4.1.2
 jpy==0.16.0
 python-dotenv==1.0.1
 zarr==2.17.2
-
+atriumdb==2.2.3
