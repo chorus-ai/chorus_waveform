@@ -234,7 +234,6 @@ class BaseDICOMFormat(BaseFormat):
         df = pd.concat(out)
         df.sort_values(by=['iod', 'freq_id', 'start_time', 'chunk_id'], inplace=True)
         return df 
-        
 
     # input:  list of dataframes, each dataframe is a group of channels with same iod, group, and frequency.
     # return: dict, each entry is (iod, group, freq, id) = {start_t, end_t, [{(channel, chunk_id): (s_time, e_time), ...}]}, no overlap in time, all channels in a subchunk are non-zero.
@@ -290,7 +289,6 @@ class BaseDICOMFormat(BaseFormat):
             # print(out)    
         # do group by
         return out
-                        
 
     # input:  list of dataframes, each dataframe is a group of channels with same iod, group, and frequency.
     # return: dict, each entry is (iod, group, freq, id) = {start_t, end_t, [{(channel, chunk_id): (s_time, e_time), ...]}.  each chunk is defined as the max span for a set of channels.
@@ -340,7 +338,6 @@ class BaseDICOMFormat(BaseFormat):
                     
         return out
 
-    
     # input:  list of dataframes, each dataframe is a group of channels with same iod, group, and frequency.
     # return: dict, each entry is (iod, group, freq, id) = {start_t, end_t, [(channel, chunk_id), ...]}.  each chunk is a fixed time period.
     # we should first detect the merged chunks then segment the chunks. 
@@ -434,12 +431,29 @@ class BaseDICOMFormat(BaseFormat):
 
         return out
 
+    def make_iod(self, iod_name: str, hifi: bool, num_channels: int = 1):
+        if iod_name == "GeneralECGWaveform":
+            return dcm_writer.GeneralECGWaveform(hifi=hifi)
+        elif iod_name == "AmbulatoryECGWaveform":
+            return dcm_writer.AmbulatoryECGWaveform(hifi=hifi)
+        elif iod_name == "SleepEEGWaveform":
+            return dcm_writer.SleepEEGWaveform(hifi=hifi)
+        elif iod_name == "ElectromyogramWaveform":
+            return dcm_writer.ElectromyogramWaveform(hifi=hifi)
+        elif iod_name == "ArterialPulseWaveform":
+            return dcm_writer.ArterialPulseWaveform(hifi=hifi)
+        elif iod_name == "RespiratoryWaveform":
+            return dcm_writer.RespiratoryWaveform(hifi=hifi, num_channels=num_channels)
+        elif iod_name == "HemodynamicWaveform":
+            return dcm_writer.HemodynamicWaveform(hifi=hifi)
+        else:
+            raise ValueError("Unknown IOD")
+
     def _pretty_print(self, table: dict):
         for key, value in table.items():
             print(key, ": ", value['start_t'], " ", value['end_t'])
             for k, v in value['channel_chunk'].items():
                 print("        ", k, v)
-    
         
     def write_waveforms(self, path, waveforms):
         fs = FileSet()
@@ -487,7 +501,7 @@ class BaseDICOMFormat(BaseFormat):
             # print("writing ", iod_name, ", ", file_id)
             
             # create and iod instance
-            iod = self.make_iod(iod_name, num_channels = count_per_iod[iod_name])
+            iod = self.make_iod(iod_name, hifi=self.hifi, num_channels = count_per_iod[iod_name])
                                                 
             # each multiplex group can have its own frequency
             # but if there are different frequencies for channels in a multiplex group, we need to split.
@@ -565,8 +579,7 @@ class BaseDICOMFormat(BaseFormat):
         # fs.copy(path)
         # print(path)
         fs.write(path)
-        
-    
+
     def read_waveforms(self, path, start_time, end_time, signal_names):
         # have to read the whole data set each time if using dcmread.  this is not efficient.
         
@@ -714,55 +727,20 @@ class BaseDICOMFormat(BaseFormat):
 # https://dicom.nema.org/medical/dicom/current/output/chtml/part03/PS3.3.html
 
 
-    
 class DICOMHighBits(BaseDICOMFormat):
     # waveform lead names to dicom IOD mapping.   Incomplete.
     # avoiding 12 lead ECG because of the limit in number of samples.
 
     writer = dcm_writer.DICOMWaveformWriter()
     chunkSize = None # adaptive
-    
-    def make_iod(self, iod_name: str, num_channels:int = 1):
-        if iod_name == "GeneralECGWaveform":
-            return dcm_writer.GeneralECGWaveform(hifi = True)
-        elif iod_name == "AmbulatoryECGWaveform":
-            return dcm_writer.AmbulatoryECGWaveform(hifi = True)
-        elif iod_name == "SleepEEGWaveform":
-            return dcm_writer.SleepEEGWaveform(hifi = True)
-        elif iod_name == "ElectromyogramWaveform":
-            return dcm_writer.ElectromyogramWaveform(hifi = True)
-        elif iod_name == "ArterialPulseWaveform":
-            return dcm_writer.ArterialPulseWaveform(hifi = True)
-        elif iod_name == "RespiratoryWaveform":
-            return dcm_writer.RespiratoryWaveform(hifi = True, num_channels=num_channels)
-        elif iod_name == "HemodynamicWaveform":
-            return dcm_writer.HemodynamicWaveform(hifi = True)
-        else:
-            raise ValueError("Unknown IOD")
+    hifi = True
 
     
 class DICOMLowBits(BaseDICOMFormat):
 
     writer = dcm_writer.DICOMWaveformWriter()
     chunkSize = None  # adaptive
-    
-    def make_iod(self, iod_name: str, num_channels:int = 1):
-        if iod_name == "GeneralECGWaveform":
-            return dcm_writer.GeneralECGWaveform(hifi=False)
-        elif iod_name == "AmbulatoryECGWaveform":
-            return dcm_writer.AmbulatoryECGWaveform(hifi = False)
-        elif iod_name == "SleepEEGWaveform":
-            return dcm_writer.SleepEEGWaveform(hifi = False)
-        elif iod_name == "ElectromyogramWaveform":
-            return dcm_writer.ElectromyogramWaveform(hifi = False)
-        elif iod_name == "ArterialPulseWaveform":
-            return dcm_writer.ArterialPulseWaveform(hifi=False)
-        elif iod_name == "RespiratoryWaveform":
-            return dcm_writer.RespiratoryWaveform(hifi=False, num_channels=num_channels)
-        elif iod_name == "HemodynamicWaveform":
-            return dcm_writer.HemodynamicWaveform(hifi = True)
-        else:
-            raise ValueError("Unknown IOD")
+    hifi = False
 
 
 class DICOMHighBitsChunked(DICOMHighBits):
@@ -770,25 +748,25 @@ class DICOMHighBitsChunked(DICOMHighBits):
     # avoiding 12 lead ECG because of the limit in number of samples.
 
     chunkSize = 86400.0  # chunk as 1 day.
+    hifi = True
 
 
-
-    
 class DICOMLowBitsChunked(DICOMLowBits):
 
     chunkSize = 86400.0
-    
-        
+    hifi = False
+
 
 class DICOMHighBitsMerged(DICOMHighBits):
     # waveform lead names to dicom IOD mapping.   Incomplete.
     # avoiding 12 lead ECG because of the limit in number of samples.
 
     chunkSize = -1
+    hifi = True
 
 
-    
 class DICOMLowBitsMerged(DICOMLowBits):
 
     chunkSize = -1
+    hifi = False
     
