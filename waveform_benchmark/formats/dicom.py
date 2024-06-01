@@ -695,7 +695,10 @@ class BaseDICOMFormat(BaseFormat):
                     target_start = 0 if gstart <= start_time else int(np.round((gstart * freq) - (start_time * freq)))
                     target_end = max_len if end_time <= gend else int(np.round((gend * freq) - (start_time * freq)))
 
-
+                    nsamps = min(end_offset - start_offset,  target_end - target_start)
+                    end_offset = start_offset + nsamps
+                    target_end = target_start + nsamps
+                    
                     # get info about the each channel present.
                     for info in channel_infos:
                         channel = info['channel']
@@ -713,7 +716,7 @@ class BaseDICOMFormat(BaseFormat):
                             # copy the data to the output
                             # print("copy ", arrs[group_idx].shape, " to ", output[channel].shape, 
                             #       " from ", target_start, " to ", target_end)
-                            output[channel][target_start:target_end] = arrs[group_idx][channel_idx, :]
+                            output[channel][target_start:target_end] = arrs[group_idx][channel_idx, 0:nsamps]
         
         t2 = time.time()
         d3 = t2 - t1
