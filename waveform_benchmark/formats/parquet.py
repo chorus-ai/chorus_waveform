@@ -8,8 +8,21 @@ from waveform_benchmark.formats.base import BaseFormat
 
 ROW_GROUP_SIZE_IN_SECONDS = 500
 
+<<<<<<< HEAD
 
 class Parquet(BaseFormat):
+=======
+<<<<<<< HEAD
+<<<<<<< HEAD
+
+class Parquet(BaseFormat):
+=======
+class Parquet_chunked(BaseFormat):
+>>>>>>> eb7fef9 (Added unchunked signals and compressed signals handlers for parquet)
+=======
+class Parquet(BaseFormat):
+>>>>>>> 4eb8974 (Parquet handler cleaned with compressed and uncompressed classes)
+>>>>>>> ed350fb (Parquet handler cleaned with compressed and uncompressed classes)
     """
     Example format using Parquet with chunked signals with row group size.
     """
@@ -39,10 +52,34 @@ class Parquet(BaseFormat):
 
             # Add metadata to table
             table = table.replace_schema_metadata(metadata)
+<<<<<<< HEAD
             
              # Write to Parquet file with row group size based on ROW_GROUP_SIZE_IN_SECONDS
             dynamic_row_group_size = round(waveform["samples_per_second"] * ROW_GROUP_SIZE_IN_SECONDS)
             file_name = f"{path}_{name}.parquet"
+=======
+<<<<<<< HEAD
+
+            # Write to Parquet file with row group size based on ROW_GROUP_SIZE_IN_SECONDS
+            dynamic_row_group_size = int(waveform["samples_per_second"] * ROW_GROUP_SIZE_IN_SECONDS)
+            print('dynqmic row group size:', dynamic_row_group_size)
+            file_name = f"{path}_{name}.parquet"
+            pq.write_table(table, file_name, row_group_size=dynamic_row_group_size)
+=======
+            
+             # Write to Parquet file with row group size based on ROW_GROUP_SIZE_IN_SECONDS
+            dynamic_row_group_size = round(waveform["samples_per_second"] * ROW_GROUP_SIZE_IN_SECONDS)
+            file_name = f"{path}_{name}.parquet"
+
+            if self.fmt == 'Compressed':
+                pq.write_table(table, file_name, row_group_size=dynamic_row_group_size, compression='gzip')
+            else:
+                pq.write_table(table, file_name, row_group_size=dynamic_row_group_size)
+            
+        
+    def read_waveforms(self, path, start_time, end_time, signal_names):
+>>>>>>> 4eb8974 (Parquet handler cleaned with compressed and uncompressed classes)
+>>>>>>> ed350fb (Parquet handler cleaned with compressed and uncompressed classes)
 
             if self.fmt == 'Compressed':
                 pq.write_table(table, file_name, row_group_size=dynamic_row_group_size, compression='gzip')
