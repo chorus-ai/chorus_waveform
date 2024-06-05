@@ -107,10 +107,10 @@ CHANNEL_TO_DICOM_IOD = {
     "V":  dcm_writer.GeneralECGWaveform,
     "V2": dcm_writer.GeneralECGWaveform,
     "V5": dcm_writer.GeneralECGWaveform,
-    "aVR":  dcm_writer.GeneralECGWaveform,
+    "AVR":  dcm_writer.GeneralECGWaveform,
     "ECG": dcm_writer.AmbulatoryECGWaveform,
-    "Pleth":  dcm_writer.ArterialPulseWaveform,
-    "Resp":  dcm_writer.RespiratoryWaveform,
+    "PLETH":  dcm_writer.ArterialPulseWaveform,
+    "RESP":  dcm_writer.RespiratoryWaveform,
     "RR":  dcm_writer.RespiratoryWaveform,
     "CO2": dcm_writer.RespiratoryWaveform,
     "CVP": dcm_writer.HemodynamicWaveform,
@@ -119,7 +119,7 @@ CHANNEL_TO_DICOM_IOD = {
     "PAP": dcm_writer.HemodynamicWaveform,
     "PA2": dcm_writer.HemodynamicWaveform,
     "ABP": dcm_writer.HemodynamicWaveform,
-    "Ao": dcm_writer.HemodynamicWaveform,
+    "AO": dcm_writer.HemodynamicWaveform,
     "MCL": dcm_writer.GeneralECGWaveform,
     "ICP": dcm_writer.HemodynamicWaveform,
     "F3-M2": dcm_writer.SleepEEGWaveform,
@@ -129,11 +129,11 @@ CHANNEL_TO_DICOM_IOD = {
     "O1-M2": dcm_writer.SleepEEGWaveform,
     "O2-M1": dcm_writer.SleepEEGWaveform,
     "E1-M2": dcm_writer.SleepEEGWaveform,
-    "Chin1-Chin2": dcm_writer.ElectromyogramWaveform,
+    "CHIN1-CHIN2": dcm_writer.ElectromyogramWaveform,
     "ABD": dcm_writer.RespiratoryWaveform,
     "CHEST": dcm_writer.RespiratoryWaveform,
     "AIRFLOW": dcm_writer.RespiratoryWaveform,
-    "SaO2": dcm_writer.ArterialPulseWaveform,
+    "SAO2": dcm_writer.ArterialPulseWaveform,
     "AR1": dcm_writer.HemodynamicWaveform,
     "AR2": dcm_writer.HemodynamicWaveform,
     "SPO2": dcm_writer.ArterialPulseWaveform,
@@ -162,8 +162,8 @@ class BaseDICOMFormat(BaseFormat):
                 raise ValueError("Units not found in waveform")
             
             freq = wf['samples_per_second']
-            iod = CHANNEL_TO_DICOM_IOD[channel]
-            group = iod.channel_coding[channel]['group']
+            iod = CHANNEL_TO_DICOM_IOD[channel.upper()]
+            group = iod.channel_coding[channel.upper()]['group']
             
 
             for i, chunk in enumerate(wf['chunks']):
@@ -489,7 +489,7 @@ class BaseDICOMFormat(BaseFormat):
         # count channels belonging to respiratory data this is needed for the iod
         count_per_iod = {}
         for channel in waveforms.keys():
-            iod_name = CHANNEL_TO_DICOM_IOD[channel].__name__
+            iod_name = CHANNEL_TO_DICOM_IOD[channel.upper()].__name__
             if iod_name not in count_per_iod.keys():
                 count_per_iod[iod_name] = 1
             else:
