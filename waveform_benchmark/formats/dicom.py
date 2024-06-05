@@ -584,6 +584,7 @@ class BaseDICOMFormat(BaseFormat):
         # have to read the whole data set each time if using dcmread.  this is not efficient.
         
         signal_set = set(signal_names)
+        signal_set = {name.upper() : name for name in signal_set}
         # ========== read from dicomdir file
         # ideally - each file should have a list of channels inside, and the start and end time stamps.
         # but we may have to open each file and read to gather that info
@@ -606,8 +607,9 @@ class BaseDICOMFormat(BaseFormat):
                 etime = stime + float(samples[0]) / freqs[0]
                                 
                 channels = str.split(item[0x0099, 0x1021].value, sep = ',')
+                canonical_channels = [x.upper() for x in channels]
                 
-                any_channels_present = np.any([x in signal_set for x in channels])
+                any_channels_present = np.any([x in signal_set.keys() for x in canonical_channels])
                 if any_channels_present and (stime <= float(end_time)) and (etime >= float(start_time)):
 
                     group_ids = [ int(x) for x in str.split(item[0x0099, 0x1022].value, sep = ',')]
@@ -620,6 +622,7 @@ class BaseDICOMFormat(BaseFormat):
                         if str(group_id) not in file_info[item.ReferencedFileID].keys():
                             file_info[item.ReferencedFileID][str(group_id)] = []
                             
+                        # original channel name
                         channel_info = {
                                         'channel': chan,
                                         'channel_idx': chan_ids[i],
@@ -701,22 +704,23 @@ class BaseDICOMFormat(BaseFormat):
                     
                     # get info about the each channel present.
                     for info in channel_infos:
-                        channel = info['channel']
-                        if (channel in signal_names) and (gstart <= float(end_time)) and (gend >= float(start_time)):
+                        channel = info['channel'].upper()
+                        if (channel in signal_set.keys()) and (gstart <= float(end_time)) and (gend >= float(start_time)):
                             channel_idx = info['channel_idx']
+                            out_channel = signal_set[channel]
                             # load the data if never read.  else use cached..
                             if group_idx not in arrs.keys():
                                 item = cast(Dataset, seq)
                                 arrs[group_idx] = dcm_reader.get_multiplex_array(fobj, item, start_offset, end_offset, as_raw = False)
                         
                             # init the output if not previously allocated
-                            if channel not in output.keys():
-                                output[channel] = np.full(shape = max_len, fill_value = np.nan, dtype=np.float64)
+                            if out_channel not in output.keys():
+                                output[out_channel] = np.full(shape = max_len, fill_value = np.nan, dtype=np.float64)
 
                             # copy the data to the output
                             # print("copy ", arrs[group_idx].shape, " to ", output[channel].shape, 
                             #       " from ", target_start, " to ", target_end)
-                            output[channel][target_start:target_end] = arrs[group_idx][channel_idx, 0:nsamps]
+                            output[out_channel][target_start:target_end] = arrs[group_idx][channel_idx, 0:nsamps]
         
         t2 = time.time()
         d3 = t2 - t1
