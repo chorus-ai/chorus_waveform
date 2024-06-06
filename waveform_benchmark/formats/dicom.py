@@ -16,6 +16,8 @@ from datetime import datetime
 import pandas as pd
 import pprint
 
+import uuid
+
 import warnings
 # warnings.filterwarnings("error")
 from pydicom.fileset import FileSet, RecordNode
@@ -522,6 +524,7 @@ class BaseDICOMFormat(BaseFormat):
             record = Dataset()
             record.DirectoryRecordType = "WAVEFORM"
             record.ReferencedSOPInstanceUIDInFile = dicom.SOPInstanceUID
+            record.ReferencedSOPClassUIDInFile = dicom.SOPClassUID
             record.InstanceNumber = dicom.InstanceNumber
             record.ContentDate = dicom.ContentDate
             record.ContentTime = dicom.ContentTime
@@ -580,6 +583,8 @@ class BaseDICOMFormat(BaseFormat):
         # fs.copy(path)
         # print(path)
         fs.write(path)
+        # copy to a directory with randomly generated name
+        # fs.copy('/mnt/c/Users/tcp19/BACKUP/dicom_waveform/' + str(uuid.uuid4()))
 
     def read_waveforms(self, path, start_time, end_time, signal_names):
         # have to read the whole data set each time if using dcmread.  this is not efficient.

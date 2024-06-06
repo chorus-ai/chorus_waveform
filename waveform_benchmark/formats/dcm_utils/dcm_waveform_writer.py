@@ -259,14 +259,14 @@ class RespiratoryWaveform(DICOMWaveformIOD):
             #     self.VR = DICOMWaveform8
             # 8bit allowed, but gain may be too high for 8 bit
             self.VR = DICOMWaveform16
-            storage_uid = uid.RespiratoryWaveformStorage
+            self.storage_uid = uid.RespiratoryWaveformStorage
         elif num_channels > 1:
             if hifi:
                 self.VR = DICOMWaveform32
             else:
                 self.VR = DICOMWaveform16
-            storage_uid = uid.MultichannelRespiratoryWaveformStorage
-                    
+            self.storage_uid = uid.MultichannelRespiratoryWaveformStorage
+                                        
     modality = 'RESP'
     channel_coding = {
         'RESP': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-01', 'meaning': 'Respiration'},
