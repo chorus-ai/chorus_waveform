@@ -107,10 +107,10 @@ CHANNEL_TO_DICOM_IOD = {
     "V":  dcm_writer.GeneralECGWaveform,
     "V2": dcm_writer.GeneralECGWaveform,
     "V5": dcm_writer.GeneralECGWaveform,
-    "aVR":  dcm_writer.GeneralECGWaveform,
+    "AVR":  dcm_writer.GeneralECGWaveform,
     "ECG": dcm_writer.AmbulatoryECGWaveform,
-    "Pleth":  dcm_writer.ArterialPulseWaveform,
-    "Resp":  dcm_writer.RespiratoryWaveform,
+    "PLETH":  dcm_writer.ArterialPulseWaveform,
+    "RESP":  dcm_writer.RespiratoryWaveform,
     "RR":  dcm_writer.RespiratoryWaveform,
     "CO2": dcm_writer.RespiratoryWaveform,
     "CVP": dcm_writer.HemodynamicWaveform,
@@ -119,7 +119,7 @@ CHANNEL_TO_DICOM_IOD = {
     "PAP": dcm_writer.HemodynamicWaveform,
     "PA2": dcm_writer.HemodynamicWaveform,
     "ABP": dcm_writer.HemodynamicWaveform,
-    "Ao": dcm_writer.HemodynamicWaveform,
+    "AO": dcm_writer.HemodynamicWaveform,
     "MCL": dcm_writer.GeneralECGWaveform,
     "ICP": dcm_writer.HemodynamicWaveform,
     "F3-M2": dcm_writer.SleepEEGWaveform,
@@ -129,11 +129,11 @@ CHANNEL_TO_DICOM_IOD = {
     "O1-M2": dcm_writer.SleepEEGWaveform,
     "O2-M1": dcm_writer.SleepEEGWaveform,
     "E1-M2": dcm_writer.SleepEEGWaveform,
-    "Chin1-Chin2": dcm_writer.ElectromyogramWaveform,
+    "CHIN1-CHIN2": dcm_writer.ElectromyogramWaveform,
     "ABD": dcm_writer.RespiratoryWaveform,
     "CHEST": dcm_writer.RespiratoryWaveform,
     "AIRFLOW": dcm_writer.RespiratoryWaveform,
-    "SaO2": dcm_writer.ArterialPulseWaveform,
+    "SAO2": dcm_writer.ArterialPulseWaveform,
     "AR1": dcm_writer.HemodynamicWaveform,
     "AR2": dcm_writer.HemodynamicWaveform,
     "SPO2": dcm_writer.ArterialPulseWaveform,
@@ -162,8 +162,8 @@ class BaseDICOMFormat(BaseFormat):
                 raise ValueError("Units not found in waveform")
             
             freq = wf['samples_per_second']
-            iod = CHANNEL_TO_DICOM_IOD[channel]
-            group = iod.channel_coding[channel]['group']
+            iod = CHANNEL_TO_DICOM_IOD[channel.upper()]
+            group = iod.channel_coding[channel.upper()]['group']
             
 
             for i, chunk in enumerate(wf['chunks']):
@@ -489,7 +489,7 @@ class BaseDICOMFormat(BaseFormat):
         # count channels belonging to respiratory data this is needed for the iod
         count_per_iod = {}
         for channel in waveforms.keys():
-            iod_name = CHANNEL_TO_DICOM_IOD[channel].__name__
+            iod_name = CHANNEL_TO_DICOM_IOD[channel.upper()].__name__
             if iod_name not in count_per_iod.keys():
                 count_per_iod[iod_name] = 1
             else:
@@ -548,7 +548,7 @@ class BaseDICOMFormat(BaseFormat):
             channel_ids = [str(x['channel_idx']) for x in channel_info]
             freqs = [str(x['freq']) for x in group_info]
             nsamples = [str(x['number_samples']) for x in group_info]
-            stimes = [x['start_time'] for x in group_info]
+            stimes = [str(x['start_time']) for x in group_info]
             
             block.add_new(0x21, "LO", ",".join(channel_names)) # all channels   (0099 1021)
             block.add_new(0x22, "LO", ",".join(group_ids)) # group of each channel   (0099 1022)
@@ -556,10 +556,11 @@ class BaseDICOMFormat(BaseFormat):
             
             block.add_new(0x11, "LO", ",".join(freqs)) # group's frequencies   (0099 1011)  
             block.add_new(0x12, "LO", ",".join(nsamples)) # groups' sample count   (0099 1012)   
+            block.add_new(0x01, "LO", ",".join(stimes))  # group's start times.  (0099 1013)
 
-            stime_str = str(min(stimes))
-            stime_str = stime_str if len(stime_str) <= 16 else stime_str[:16]
-            block.add_new(0x01, "DS", stime_str) # file seqs start time   (0099 1001)   // use same VR as MultiplexGroupTimeOffset
+            # stime_str = str(min(stimes))
+            # stime_str = stime_str if len(stime_str) <= 16 else stime_str[:16]
+            # block.add_new(0x01, "DS", stime_str) # file seqs start time   (0099 1001)   // use same VR as MultiplexGroupTimeOffset
             # block.add_new(0x02, "FL", chunk_info['end_t']) # file seqs end time   (0099 1002)
             
             wave_node = RecordNode(record)
@@ -584,6 +585,7 @@ class BaseDICOMFormat(BaseFormat):
         # have to read the whole data set each time if using dcmread.  this is not efficient.
         
         signal_set = set(signal_names)
+        signal_set = {name.upper() : name for name in signal_set}
         # ========== read from dicomdir file
         # ideally - each file should have a list of channels inside, and the start and end time stamps.
         # but we may have to open each file and read to gather that info
@@ -600,34 +602,42 @@ class BaseDICOMFormat(BaseFormat):
             if (item.DirectoryRecordType == "WAVEFORM") and (Tag(0x0099, 0x1001) in item) :
                 
                 # keep same order, do not use set
-                stime = cast(float, item[0x0099, 0x1001].value)
                 freqs = [float(x) for x in str.split(item[0x0099, 0x1011].value, sep = ',')]
                 samples = [int(x) for x in str.split(item[0x0099, 0x1012].value, sep = ',')]
-                etime = stime + float(samples[0]) / freqs[0]
+                stimes = [float(x) for x in str.split(item[0x0099, 0x1001].value, sep = ',')]
+                etimes = [x + float(y) / z for x, y, z in zip(stimes, samples, freqs)]
                                 
                 channels = str.split(item[0x0099, 0x1021].value, sep = ',')
-                
-                any_channels_present = np.any([x in signal_set for x in channels])
-                if any_channels_present and (stime <= float(end_time)) and (etime >= float(start_time)):
-
-                    group_ids = [ int(x) for x in str.split(item[0x0099, 0x1022].value, sep = ',')]
-                    chan_ids = [int(x) for x in str.split(item[0x0099, 0x1023].value, sep = ',')]
-
+                canonical_channels = [x.upper() for x in channels]
+                group_ids = [ int(x) for x in str.split(item[0x0099, 0x1022].value, sep = ',')]
+                chan_ids = [int(x) for x in str.split(item[0x0099, 0x1023].value, sep = ',')]
+                    
+                # get group ids and set of channels for all available channels.
+                for (i, chan) in enumerate(channels):
+                    group_id = group_ids[i]
+                    stime = stimes[group_id]
+                    etime = etimes[group_id]
+                    
+                    # filtering here reduces the number of files to open
+                    if (chan.upper() not in signal_set.keys()):
+                        continue
+                    if (etime <= start_time) or (stime >= end_time):
+                        continue
+                    
                     # only add key if this is a file to be opened.
-                    file_info[item.ReferencedFileID] = {}
-                    for i, chan in enumerate(channels):
-                        group_id = group_ids[i]
-                        if str(group_id) not in file_info[item.ReferencedFileID].keys():
-                            file_info[item.ReferencedFileID][str(group_id)] = []
+                    if item.ReferencedFileID not in file_info.keys():
+                        file_info[item.ReferencedFileID] = {}
+                        
+                    if group_id not in file_info[item.ReferencedFileID].keys():
+                        file_info[item.ReferencedFileID][group_id] = []
                             
-                        channel_info = {
-                                        'channel': chan,
-                                        'channel_idx': chan_ids[i],
-                                        'freq': freqs[group_id],
-                                        'number_samples': samples[group_id],
-                                    'start_time': stime,
-                                    'end_time': etime}
-                        file_info[item.ReferencedFileID][str(group_id)].append(channel_info)
+                    # original channel name
+                    channel_info = {'channel': chan,
+                                    'channel_idx': chan_ids[i],
+                                    'freq': freqs[group_id],
+                                    'number_samples': samples[group_id],
+                                    'start_time': stime}
+                    file_info[item.ReferencedFileID][group_id].append(channel_info)
             else:
                 # no metadata, so add mapping of None to indicate need to read metadata from file
                 file_info[item.ReferencedFileID] = None
@@ -650,11 +660,15 @@ class BaseDICOMFormat(BaseFormat):
                         "ChannelSourceSequence",
                         "CodeMeaning",
                         ]
+        # file_info contains either None (have to get from individual dicom file), or metadata for matched channel/time
         for file_name, finfo in file_info.items():
             fn = path + "/" + file_name
             
             read_meta_from_file = (finfo is None)
             
+            # if metadata is in dicomdir, then we have only required files in file_info.
+            # if metadata is not in dicomdir, then all files are listed and metadata needs to be retrieved.
+            # either way, need to read the file.
             with open(fn, 'rb') as fobj:
                 
                 # open the file
@@ -673,50 +687,73 @@ class BaseDICOMFormat(BaseFormat):
                     if read_meta_from_file:                    
                         # get the file metadata (can be saved in DICOMDIR in the future, but would need to change the channel metadata info.)
                         channel_infos = dcm_reader.get_waveform_seq_info(fobj, seq)  # get channel info
+                    elif group_idx in finfo.keys():
+                        channel_infos = finfo[group_idx]
                     else:
-                        channel_infos = finfo[str(group_idx)]
-
+                        # this group in the file is not needed.
+                        continue
 
                     if len(channel_infos) == 0:
                         continue
                     
-                    # compute start and end offsets in the file using timestamps
-                    freq = float(channel_infos[0]['freq'])
-                    max_len = int(np.round(end_time * freq)) - int(np.round(start_time * freq))
-
-                    # get multiplex group time window
-                    gstart = float(channel_infos[0]['start_time'])
-                    nsamples = int(channel_infos[0]['number_samples'])
-                    gend = np.round(float(gstart) + float(nsamples) / freq, decimals=4)
-
-                    start_offset = 0 if start_time <= gstart else int(np.round((start_time * freq) - (gstart * freq)))
-                    end_offset = nsamples if end_time >= gend else int(np.round((end_time * freq) - (gstart * freq)))
-                    # compute the start and end offset in the output for this channel
-                    target_start = 0 if gstart <= start_time else int(np.round((gstart * freq) - (start_time * freq)))
-                    target_end = max_len if end_time <= gend else int(np.round((gend * freq) - (start_time * freq)))
-
-                    nsamps = min(end_offset - start_offset,  target_end - target_start)
-                    end_offset = start_offset + nsamps
-                    target_end = target_start + nsamps
-                    
-                    # get info about the each channel present.
+                    # iterate over the channel_infos now.
                     for info in channel_infos:
-                        channel = info['channel']
-                        if (channel in signal_names) and (gstart <= float(end_time)) and (gend >= float(start_time)):
-                            channel_idx = info['channel_idx']
-                            # load the data if never read.  else use cached..
-                            if group_idx not in arrs.keys():
-                                item = cast(Dataset, seq)
-                                arrs[group_idx] = dcm_reader.get_multiplex_array(fobj, item, start_offset, end_offset, as_raw = False)
+                        channel = info['channel'].upper()
                         
-                            # init the output if not previously allocated
-                            if channel not in output.keys():
-                                output[channel] = np.full(shape = max_len, fill_value = np.nan, dtype=np.float64)
+                        if (channel not in signal_set.keys()):
+                            continue
+                        
+                        # compute start and end offsets in the file using timestamps
+                        freq = float(info['freq'])
+                        max_len = int(np.round(end_time * freq)) - int(np.round(start_time * freq))
 
-                            # copy the data to the output
-                            # print("copy ", arrs[group_idx].shape, " to ", output[channel].shape, 
-                            #       " from ", target_start, " to ", target_end)
-                            output[channel][target_start:target_end] = arrs[group_idx][channel_idx, 0:nsamps]
+                        # get multiplex group time window
+                        gstart = float(info['start_time'])
+                        nsamples = int(info['number_samples'])
+                        gend = gstart + float(nsamples) / freq
+                        
+                        # calculate the intersection of the time window
+                        win_start = max(gstart, start_time)
+                        win_end = min(gend, end_time)
+                        
+                        if (win_start >= win_end):
+                            # window is not possible 
+                            continue
+                        # else we have a valid window
+                    
+                        # compute the start and end offset for the source and destination
+                        start_offset = max(0, int(np.round(win_start * freq) - np.round(gstart * freq) ))
+                        end_offset = min(nsamples, int(np.round(win_end * freq) - np.round(gstart * freq) ))
+                        # compute the start and end offset in the output for this channel
+                        target_start = max(0, int(np.round(win_start * freq) - np.round(start_time * freq) ))
+                        target_end = min(max_len, int(np.round(win_end * freq) - np.round(start_time * freq) ))
+
+                        # print(" start - end: src time ", gstart, gend, " target time ", start_time, end_time, " freq", freq, " window ", win_start, win_end, " samples : src ", start_offset, end_offset, " target ", target_start, target_end)
+
+                        nsamps = min(end_offset - start_offset,  target_end - target_start)
+                        end_offset = start_offset + nsamps
+                        target_end = target_start + nsamps
+                        
+                        if nsamps <= 0:
+                            continue
+                        # else we have a valid window with positive number of samples
+                    
+                        # get info about the each channel present.
+                        channel_idx = info['channel_idx']
+                        requested_channel_name = signal_set[channel]
+                        # load the data if never read.  else use cached..
+                        if group_idx not in arrs.keys():
+                            item = cast(Dataset, seq)
+                            arrs[group_idx] = dcm_reader.get_multiplex_array(fobj, item, start_offset, end_offset, as_raw = False)
+                    
+                        # init the output if not previously allocated
+                        if requested_channel_name not in output.keys():
+                            output[requested_channel_name] = np.full(shape = max_len, fill_value = np.nan, dtype=np.float64)
+
+                        # copy the data to the output
+                        # print("copy ", arrs[group_idx].shape, " to ", output[channel].shape, 
+                        #       " from ", target_start, " to ", target_end)
+                        output[requested_channel_name][target_start:target_end] = arrs[group_idx][channel_idx, 0:nsamps]
         
         t2 = time.time()
         d3 = t2 - t1

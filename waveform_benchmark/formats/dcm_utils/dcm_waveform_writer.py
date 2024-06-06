@@ -149,9 +149,9 @@ class TwelveLeadECGWaveform(DICOMWaveformIOD):
         "V4": {'group' : 4, 'scheme': 'MDC', 'value': '2:6', 'meaning': 'Lead V4'},
         "V5": {'group' : 4, 'scheme': 'MDC', 'value': '2:7', 'meaning': 'Lead V5'},
         "V6": {'group' : 4, 'scheme': 'MDC', 'value': '2:8', 'meaning': 'Lead V6'},
-        "aVR": {'group' : 2, 'scheme': 'MDC', 'value': '2:62', 'meaning': 'aVR, augmented voltage, right'},
-        "aVL": {'group' : 2, 'scheme': 'MDC', 'value': '2:63', 'meaning': 'aVL, augmented voltage, left'},
-        "aVF": {'group' : 2, 'scheme': 'MDC', 'value': '2:64', 'meaning': 'aVF, augmented voltage, foot'},
+        "AVR": {'group' : 2, 'scheme': 'MDC', 'value': '2:62', 'meaning': 'aVR, augmented voltage, right'},
+        "AVL": {'group' : 2, 'scheme': 'MDC', 'value': '2:63', 'meaning': 'aVL, augmented voltage, left'},
+        "AVF": {'group' : 2, 'scheme': 'MDC', 'value': '2:64', 'meaning': 'aVF, augmented voltage, foot'},
     }
     
 # 4 groups, 1 to 24 channels each. unknown sample count limit., f in 200-1000
@@ -176,9 +176,9 @@ class GeneralECGWaveform(DICOMWaveformIOD):
         "V4": {'group' : 4, 'scheme': 'MDC', 'value': '2:6', 'meaning': 'Lead V4'},
         "V5": {'group' : 4, 'scheme': 'MDC', 'value': '2:7', 'meaning': 'Lead V5'},
         "V6": {'group' : 4, 'scheme': 'MDC', 'value': '2:8', 'meaning': 'Lead V6'},
-        "aVR": {'group' : 2, 'scheme': 'MDC', 'value': '2:62', 'meaning': 'aVR, augmented voltage, right'},
-        "aVL": {'group' : 2, 'scheme': 'MDC', 'value': '2:63', 'meaning': 'aVL, augmented voltage, left'},
-        "aVF": {'group' : 2, 'scheme': 'MDC', 'value': '2:64', 'meaning': 'aVF, augmented voltage, foot'},
+        "AVR": {'group' : 2, 'scheme': 'MDC', 'value': '2:62', 'meaning': 'aVR, augmented voltage, right'},
+        "AVL": {'group' : 2, 'scheme': 'MDC', 'value': '2:63', 'meaning': 'aVL, augmented voltage, left'},
+        "AVF": {'group' : 2, 'scheme': 'MDC', 'value': '2:64', 'meaning': 'aVF, augmented voltage, foot'},
         "MCL": {'group' : 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'MCL, mock circulatory loop'},
     }
     
@@ -221,7 +221,7 @@ class HemodynamicWaveform(DICOMWaveformIOD):
         "PAP": {'group' : 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'Pulmonary Arterial Pressure'},
         "PA2": {'group' : 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'Pulmonary Arterial Pressure'},
         "ABP": {'group' : 3, 'scheme': 'unknown', 'value': '0', 'meaning': 'Ambulatory Blood Pressure'},
-        "Ao":  {'group' : 4, 'scheme': 'unknown', 'value': '0', 'meaning': 'Aortic Pressure'},
+        "AO":  {'group' : 4, 'scheme': 'unknown', 'value': '0', 'meaning': 'Aortic Pressure'},
         "ICP": {'group' : 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'Intracranial Pressure'},
         "AR1": {'group' : 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'Aortic Regurgitation Pressure'},
         "AR2": {'group' : 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'Aortic Regurgitation Pressure'},
@@ -243,9 +243,8 @@ class ArterialPulseWaveform(DICOMWaveformIOD):
     modality = 'HD'
     channel_coding = {
         # to fix.
-        'Pleth': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-00', 'meaning': 'Plethysmogram'},
         'PLETH': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-00', 'meaning': 'Plethysmogram'},
-        'SaO2': {'group': 1, 'scheme': 'unknown', 'value': '0', 'meaning': 'Arterial O2 Saturation'},
+        'SAO2': {'group': 1, 'scheme': 'unknown', 'value': '0', 'meaning': 'Arterial O2 Saturation'},
         'SPO2': {'group': 1, 'scheme': 'unknown', 'value': '0', 'meaning': 'Peripheral Arterial O2 Saturation'}
     }
 
@@ -271,7 +270,6 @@ class RespiratoryWaveform(DICOMWaveformIOD):
     modality = 'RESP'
     channel_coding = {
         'RESP': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-01', 'meaning': 'Respiration'},
-        'Resp': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-01', 'meaning': 'Respiration'},
         'RR': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-01', 'meaning': 'Respiration'},
         'ABD' : {'group': 2, 'scheme': 'unknown', 'value': '0', 'meaning': 'Respiration'},
         'CHEST' : {'group': 3, 'scheme': 'unknown', 'value': '1', 'meaning': 'Respiration'},
@@ -323,7 +321,7 @@ class ElectromyogramWaveform(DICOMWaveformIOD):
     storage_uid = uid.ElectromyogramWaveformStorage
     modality = 'EMG'
     channel_coding = {
-        'Chin1-Chin2': {'group': 1, 'scheme': 'unknown', 'value': '1', 'meaning': '??'},
+        'CHIN1-CHIN2': {'group': 1, 'scheme': 'unknown', 'value': '1', 'meaning': '??'},
     }
 
 
@@ -576,8 +574,8 @@ class DICOMWaveformWriter:
                 
             
             # this needs a look up from a controlled vocab.  This is not correct here..
-            source.CodeValue = iod.channel_coding[channel]['value']
-            source.CodingSchemeDesignator = iod.channel_coding[channel]['scheme']
+            source.CodeValue = iod.channel_coding[channel.upper()]['value']
+            source.CodingSchemeDesignator = iod.channel_coding[channel.upper()]['scheme']
             source.CodingSchemeVersion = "unknown"
             source.CodeMeaning = channel
                 
