@@ -9,6 +9,7 @@ wfdb==4.1.2
 jpy==0.16.0
 python-dotenv==1.0.1
 zarr==2.17.2
+memory-profiler==0.61.0
 
 # Workaround https://github.com/MIT-LCP/wfdb-python/issues/486
 soundfile==0.11.0
