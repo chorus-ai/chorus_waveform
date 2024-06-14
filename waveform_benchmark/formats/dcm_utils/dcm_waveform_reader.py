@@ -180,15 +180,21 @@ def get_multiplex_array(fileobj : BinaryIO,
             baseline = float(ch.ChannelBaseline)
             sensitivity = float(ch.ChannelSensitivity)
             correction = float(ch.ChannelSensitivityCorrectionFactor)
+            # nominal = v * gain = (encoded * sensitivity - baseline)   -  see reader.
+            # v = nominal * correction
             adjustment = sensitivity * correction
-            if (adjustment != 1.0) and (baseline != 0.0):
-                arr[ch_idx, ...] = np.where(arr[ch_idx, ...] == padding_value, np.nan, arr[ch_idx, ...] * adjustment + baseline)
-            elif (adjustment != 1.0):
-                arr[ch_idx, ...] = np.where(arr[ch_idx, ...] == padding_value, np.nan, arr[ch_idx, ...] * adjustment)
-            elif (baseline != 0.0):
-                arr[ch_idx, ...] = np.where(arr[ch_idx, ...] == padding_value, np.nan, arr[ch_idx, ...] + baseline)
+            base = baseline * correction
+            # print(" reading ", ch_idx, sensitivity, baseline, correction, adjustment, base)
+            if (adjustment != 1.0):
+                if (base != 0.0):
+                    arr[ch_idx, ...] = np.where(arr[ch_idx, ...] == padding_value, np.nan, arr[ch_idx, ...] * adjustment - base)
+                else:
+                    arr[ch_idx, ...] = np.where(arr[ch_idx, ...] == padding_value, np.nan, arr[ch_idx, ...] * adjustment)
             else:
-                arr[ch_idx, ...] = np.where(arr[ch_idx, ...] == padding_value, np.nan, arr[ch_idx, ...])
+                if (base != 0.0):
+                    arr[ch_idx, ...] = np.where(arr[ch_idx, ...] == padding_value, np.nan, arr[ch_idx, ...] - base)
+                else:
+                    arr[ch_idx, ...] = np.where(arr[ch_idx, ...] == padding_value, np.nan, arr[ch_idx, ...])
 
 
     return cast("np.ndarray", arr)

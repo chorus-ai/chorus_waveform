@@ -456,6 +456,17 @@ class BaseDICOMFormat(BaseFormat):
             print(key, ": ", value['start_t'], " ", value['end_t'])
             for k, v in value['channel_chunk'].items():
                 print("        ", k, v)
+                
+    # get channel min and max values, across chunks.
+    def _get_waveform_channel_minmax(self, waveforms):
+        minmax = {}
+        for channel, wf in waveforms.items():
+            mins = [ np.nanmin(chunk['samples']) for chunk in wf['chunks'] ]
+            maxs = [ np.nanmax(chunk['samples']) for chunk in wf['chunks'] ]
+            
+            minmax[channel] = (np.nanmin(mins), np.nanmax(maxs))
+        return minmax
+        
         
     def write_waveforms(self, path, waveforms):
         fs = FileSet()
@@ -485,7 +496,8 @@ class BaseDICOMFormat(BaseFormat):
             subchunks1 = self.split_chunks_temporal_merged(channel_table)
             # print("merged", len(subchunks1))
             # self._pretty_print(subchunks1)
-        
+    
+        minmax = self._get_waveform_channel_minmax(waveforms)    
         #========== now write out =============
         
         # count channels belonging to respiratory data this is needed for the iod
@@ -514,7 +526,7 @@ class BaseDICOMFormat(BaseFormat):
             dicom = self.writer.set_study_info(dicom, studyUID = studyInstanceUID, studyDate = datetime.now())
             dicom = self.writer.set_series_info(dicom, iod, seriesUID=seriesInstanceUID)
             dicom = self.writer.set_waveform_acquisition_info(dicom, instanceNumber = file_id)
-            dicom = self.writer.add_waveform_chunks_multiplexed(dicom, iod, chunk_info, waveforms)        
+            dicom = self.writer.add_waveform_chunks_multiplexed(dicom, iod, chunk_info, waveforms, minmax)
             
             # Save DICOM file.  write_like_original is required
             # these the initial path when added - it points to a temp file.
@@ -792,13 +804,13 @@ class DICOMHighBitsChunked(DICOMHighBits):
     # waveform lead names to dicom IOD mapping.   Incomplete.
     # avoiding 12 lead ECG because of the limit in number of samples.
 
-    chunkSize = 86400.0  # chunk as 1 day.
+    chunkSize = 3600.0  # chunk as 1 hr.
     hifi = True
 
 
 class DICOMLowBitsChunked(DICOMLowBits):
 
-    chunkSize = 86400.0
+    chunkSize = 3600.0
     hifi = False
 
 

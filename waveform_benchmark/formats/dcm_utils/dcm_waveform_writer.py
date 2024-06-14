@@ -8,11 +8,13 @@ from typing import TYPE_CHECKING, cast
 
 import math
 from datetime import datetime
+import decimal
 
 import warnings
-# warnings.filterwarnings("error")
 
 from waveform_benchmark.formats.base import BaseFormat
+
+# dicom3tools currently does NOT validate the IODs for waveform.  IT does validate the referencedSOPClassUIDInFile in DICOMDIR file.
 
 # types of waveforms and constraints:  
 #   https://dicom.nema.org/medical/dicom/current/output/chtml/part03/PS3.3.html
@@ -80,20 +82,20 @@ class DICOMWaveformVR:
 class DICOMWaveform8(DICOMWaveformVR):
     WaveformBitsAllocated = 8
     WaveformSampleInterpretation = "SB"
-    PaddingValue = int(-128)
     PythonDatatype = np.int8
+    PaddingValue = np.iinfo(PythonDatatype).min
                
 class DICOMWaveform16(DICOMWaveformVR):
     WaveformBitsAllocated = 16
     WaveformSampleInterpretation = "SS"
-    PaddingValue = int(-32768)
     PythonDatatype = np.int16
+    PaddingValue = np.iinfo(PythonDatatype).min
     
 class DICOMWaveform32(DICOMWaveformVR):
     WaveformBitsAllocated = 32
     WaveformSampleInterpretation = "SL"
-    PaddingValue = int(-2147483648)
     PythonDatatype = np.int32
+    PaddingValue = np.iinfo(PythonDatatype).min
 
 
 # relevant definitions:
@@ -448,11 +450,12 @@ class DICOMWaveformWriter:
     
     
     # channel_chunks is a list of tuples (channel, chunk).
-    # 
+    # minmax is a dict of channel to (min, max)
     def create_multiplexed_chunk(self, waveforms: dict, 
                                  iod: DICOMWaveformIOD, 
                                  group: int,
                                  channel_chunk: list,
+                                 minmax: dict,
                                  start_time: float,
                                  end_time: float):
                 
@@ -525,6 +528,11 @@ class DICOMWaveformWriter:
                           dtype=iod.VR.PythonDatatype)
         # now collect the chunks into an array, generate the multiplex group, and increment the chunk ids.
         unprocessed_chunks.sort(key=lambda x: (x[0], x[3], x[4])) # ordered by channel
+        # using  90% of the dynamic range to avoid overflow
+        out_min = np.round(float(iod.VR.PaddingValue) * 0.9)
+        out_max = np.round(float(np.iinfo(iod.VR.PythonDatatype).max) * 0.9)
+        
+        gains = {}
         for channel, chunk_id, start_src, start_target, end_target in unprocessed_chunks: 
             
             chunk = waveforms[channel]['chunks'][chunk_id]
@@ -537,15 +545,39 @@ class DICOMWaveformWriter:
             # values is in original type.  nan replaced with PaddingValue then will be multiplied by gain, so divide here to avoid overflow.
             # values = np.nan_to_num(np.frombuffer(chunk['samples'][start_src:end_src], dtype=np.dtype(chunk['samples'].dtype)), 
             #                        nan = float(iod.VR.PaddingValue) / float(chunk['gain']) )
+            # per dicom standard 
+            #   channelSensitivity is gain * adc resolution
+            #   datavalue * channelsensitivity = nominal value in unit specified.  should match input.
+            #   nominal value * sensitivity correction factor = actual value.
+            #    
+            
+            # get the input values
             v = np.frombuffer(chunk['samples'][start_src:end_src], dtype=np.dtype(chunk['samples'].dtype))
-            gain = float(chunk['gain'])
-            values = np.where(np.isnan(v), float(iod.VR.PaddingValue), v * gain)
-
-
+            min_v = float(minmax[channel][0])
+            max_v = float(minmax[channel][1])
+            
+            # sensitivity, baseline, and scaling factor:
+            # encoded = (input - min(input)) / (max(input) - min(input)) * (max(output) - min(output)) + min(output)
+            #           = input * scale1 + min(output) - min(input) * scale1 
+            #           = input * scale1 + baseline
+            #  where scale1 = (max(output) - min(output)) / (max(input) - min(input), 
+            scale1 = (out_max - out_min) / (max_v - min_v)
+            #        baseline = min(output) - min(input) * scale1
+            base1 = out_min - min_v * scale1
+            
             chan_id = channels[channel]
+            samples[chan_id][start_target:end_target] = np.where(np.isnan(v), float(iod.VR.PaddingValue), np.round(v * scale1 + base1, decimals=0)).astype(iod.VR.PythonDatatype)
+            # nominal data = input * gain = (encoded - baseline) / scale1 * gain
+            #             = encoded * scale2 - baseline2
+            #  where scale2 = gain / scale1, baseline2 = baseline * scale2 
+            
+            if channel not in gains.keys():
+                gains[channel] = set()
+            gains[channel].add(float(chunk['gain']))
+
             # write out in integer format
             # samples[chan_id][start_target:end_target] = np.round(values * float(chunk['gain']), decimals=0).astype(iod.VR.PythonDatatype)
-            samples[chan_id][start_target:end_target] = np.round(values, decimals=0).astype(iod.VR.PythonDatatype)
+            # samples[chan_id][start_target:end_target] = np.round(values, decimals=0).astype(iod.VR.PythonDatatype)
             # print("chunk shape:", chunk['samples'].shape)
             # print("values shape: ", values.shape)
             # print("samples shape: ", samples.shape)
@@ -579,7 +611,21 @@ class DICOMWaveformWriter:
             source.CodingSchemeVersion = "unknown"
             source.CodeMeaning = channel
                 
-            chdef.ChannelSensitivity = 1.0
+            
+            if len(gains[channel]) > 1:
+                print("ERROR: Different gains for the same channel is not supported. ", gains[channel])
+            gain = gains[channel].pop()
+            
+            # actual data = nominal data / gain.
+            # baseline:  standards def: offset of encoded sample value 0 from actual (nonimal) 0 in same unit as nominal
+            #       set as baseline2
+            # sensitivity = scale2
+            # sensitivity correction factor would be 1/gain, so we can recover gain.
+            sens_corr = str(decimal.Decimal(1.0 / gain))
+            
+            scale1inv = (minmax[channel][1] - minmax[channel][0]) / (out_max - out_min)
+            sensitivity = str(decimal.Decimal(gain * scale1inv))
+            chdef.ChannelSensitivity = sensitivity if len(sensitivity) <= 16 else sensitivity[:16]   # gain and ADC resolution goes here
             chdef.ChannelSensitivityUnitsSequence = [Dataset()]
             units = chdef.ChannelSensitivityUnitsSequence[0]
                 
@@ -590,14 +636,20 @@ class DICOMWaveformWriter:
             units.CodeMeaning = UCUM_ENCODING[unit]  # this needs to be fixed.
                 
             # multiplier to apply to the encoded value to get back the orginal input.
-            ds = str(float(1.0) / float(chunk['gain']))
-            chdef.ChannelSensitivityCorrectionFactor = ds if len(ds) <= 16 else ds[:16]
-            chdef.ChannelBaseline = '0'
+            chdef.ChannelSensitivityCorrectionFactor = sens_corr if len(sens_corr) <= 16 else sens_corr[:16]
+            # Offset of encoded sample value 0 from actual 0 using the units defined in the Channel Sensitivity Units Sequence (003A,0211).
+            # baseline2 = baseline * scale2 = baseline * gain * scale1inv = (min(output) - min(input) * scale1) * gain * scale1inv
+            #   = min(output) * gain * scale1inv   - min(input) * gain
+            #   = min(output) * sensitivity - min(input) * gain
+            # nom data = encoded * scale2 - baseline2
+            baseln = str(decimal.Decimal((out_min * scale1inv - minmax[channel][0]) * gain))
+            chdef.ChannelBaseline = baseln if len(baseln) <= 16 else baseln[:16]
+                        
             chdef.WaveformBitsStored = iod.VR.WaveformBitsAllocated
             # only for amplifier type of AC
             # chdef.FilterLowFrequency = '0.05'
             # chdef.FilterHighFrequency = '300'
-            channeldefs[channel] = chdef            
+            channeldefs[channel] = chdef
             
 
         wfDS.ChannelDefinitionSequence = channeldefs.values() 
@@ -608,10 +660,12 @@ class DICOMWaveformWriter:
         return wfDS
 
     
+    # minmax is dictionary of channel to (min, max) values
     def add_waveform_chunks_multiplexed(self, dataset,
                                         iod: DICOMWaveformIOD,
                                         chunk_info: dict,
-                                        waveforms: dict):
+                                        waveforms: dict,
+                                        minmax: dict):
         
         # dicom waveform -> sequence of multiplex group -> channels with same sampling frequency
         # multiplex group can have labels.
@@ -629,7 +683,7 @@ class DICOMWaveformWriter:
         
         for group, chanchunks in grouped_channels.items():
             # input to this is [(channel, chunk), ... ]
-            multiplexGroupDS = self.create_multiplexed_chunk(waveforms, iod, group, chanchunks, 
+            multiplexGroupDS = self.create_multiplexed_chunk(waveforms, iod, group, chanchunks, minmax,
                                                             start_time=start_time, end_time=end_time)
             dataset.WaveformSequence.append(multiplexGroupDS)        
         
