@@ -23,13 +23,20 @@ class NPY(BaseFormat):
                 samples[start + 1:end + 1] = chunk['samples']
 
             # Save the samples as an NPY file.
-            numpy.save(f"{path}_{name}.npy", samples)
+            if self.fmt == 'Compressed':
+                numpy.savez_compressed(f"{path}_{name}.npz", samples)
+            else:
+                numpy.save(f"{path}_{name}.npy", samples)
 
     def read_waveforms(self, path, start_time, end_time, signal_names):
         results = {}
         for signal_name in signal_names:
-            waveform_path = f"{path}_{signal_name}.npy"
-            samples = numpy.load(waveform_path)
+            if self.fmt == 'Compressed':
+                waveform_path = f"{path}_{signal_name}.npz"
+                samples = numpy.load(waveform_path, mmap_mode='r')['arr_0']
+            else:
+                waveform_path = f"{path}_{signal_name}.npy"
+                samples = numpy.load(waveform_path, mmap_mode='r')
 
             # Extract the sampling rate from the first element
             fs = samples[0]
@@ -44,3 +51,9 @@ class NPY(BaseFormat):
             results[signal_name] = samples
 
         return results
+
+class NPY_Compressed(NPY):
+    fmt = 'Compressed'
+
+class NPY_Uncompressed(NPY):
+    fmt = 'Uncompressed'

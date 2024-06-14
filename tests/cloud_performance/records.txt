@@ -1,0 +1,10 @@
+/waveform/waveforms/challenge-2018/1.0.0/training/tr03-0079/tr03-0079
+/waveform/waveforms/challenge-2018/1.0.0/training/tr14-0272/tr14-0272
+/waveform/waveforms/charisdb/1.0.0/charis1
+/waveform/waveforms/charisdb/1.0.0/charis5
+/waveform/waveforms/GE_WFDB/A004-0502604815/A004-0502604815
+/waveform/waveforms/GE_WFDB/A004-0503168997/A004-0503168997
+/waveform/waveforms/mimic3wdb/1.0/36/3654093/3654093
+/waveform/waveforms/mimic3wdb/1.0/37/3740336/3740336
+/waveform/waveforms/mimic4wdb/0.1.0/waves/p100/p10079700/85594648/85594648
+/waveform/waveforms/mimic4wdb/0.1.0/waves/p169/p16955095/82284982/82284982
