@@ -16,6 +16,8 @@ from waveform_benchmark.utils import median_attr
 from memory_profiler import memory_usage
 import time
 
+MEM_METHOD = 3  # 1 is rusage, 2 is tracemalloc, 3 is psutils, 0 is for doing it outside of this function.
+
 def append_result(format_name, waveform_name, test_name, result, format_list, waveform_list, test_list, result_list):
     """
     Add a result to the summary lists
@@ -27,6 +29,37 @@ def append_result(format_name, waveform_name, test_name, result, format_list, wa
 
     return format_list, waveform_list, test_list, result_list
 
+def _run_read_test(fmt, path, total_length, all_channels, block_length, block_count,
+                   test_min_dur = 10, test_min_iter = 3, mem_method = 0):
+    counters = []
+    for i in repeat_test(test_min_dur, test_min_iter):
+        r = random.Random(12345)
+        with PerformanceCounter(mem_method = mem_method) as pc:
+            for j in range(block_count):
+                t0 = r.random() * (total_length - block_length)
+                t1 = t0 + block_length
+                fmt().read_waveforms(path, t0, t1, all_channels)    
+                # mem = memory_usage((fmt().read_waveforms, (path, t0, t1, all_channels), {}), include_children = True, max_usage = True)
+                # mem_usage.append(mem)
+        counters.append(pc)
+    return counters
+    
+
+
+def _run_read_test_1channel(fmt, path, total_length, all_channels, block_length, block_count,
+                            test_min_dur = 10, test_min_iter = 3, mem_method = 0):
+    counters = []
+    for i in repeat_test(test_min_dur, test_min_iter):
+        r = random.Random(12345)
+        with PerformanceCounter(mem_method = mem_method) as pc:
+            for j in range(block_count):
+                t0 = r.random() * (total_length - block_length)
+                t1 = t0 + block_length
+                fmt().read_waveforms(path, t0, t1, all_channels)    
+                # mem = memory_usage((fmt().read_waveforms, (path, t0, t1, all_channels), {}), include_children = True, max_usage = True)
+                # mem_usage.append(mem)
+        counters.append(pc)
+    return counters
 
 def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, waveform_list=None, test_list=None,
                    result_list=None):
@@ -113,8 +146,11 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
 
         # Write the example data to a file or files.
         time1 = time.time()
-        with PerformanceCounter() as pc_write:
-            mem_usage = memory_usage((fmt().write_waveforms, (path, waveforms), {}), include_children = True, max_usage = True)
+        with PerformanceCounter(mem_method = MEM_METHOD) as pc_write:
+            if (MEM_METHOD == 0):
+                mem_usage = memory_usage((fmt().write_waveforms, (path, waveforms), {}), include_children = True, max_usage = True)
+            else:
+                fmt().write_waveforms(path, waveforms)
         wall_time = time.time() - time1
         
         # Calculate total size of the file(s).
@@ -127,7 +163,10 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
               % (output_size / 1024, output_size * 8 / actual_samples))
         print('Time to output: %.0f sec' % pc_write.cpu_seconds)
         print('Wall Time: %.0f s' % wall_time)
-        print('Maximum Memory Used: %.0f MiB' % mem_usage)
+        if (MEM_METHOD == 0):
+            print('Maximum Memory Used: %.0f MiB' % mem_usage)
+        else:
+            print('Maximum Memory Used: %.0f MiB' % pc_write.max_memory)
         
         print('_' * 64)
 
@@ -198,32 +237,27 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
             # print('_' * 64)
         print('_' * 64)
         print('Read performance (median of N trials):')
-        print(' #seek  #read      KiB      sec   walltime                Mem (min/mean/max)    [N]')
+        print(' #seek  #read      KiB      sec   walltime          Mem MB (curr/max)    [N]')
 
         for block_length, block_count in TEST_BLOCK_LENGTHS:
             
             time1 = time.time()
-            # mem_usage, counters = memory_usage((_run_read_test, (fmt, path, total_length, all_channels, block_length, block_count), {}), include_children = True, max_usage = True, retval = True)
             counters = []
-            mem_usage = []
-            for i in repeat_test(TEST_MIN_DURATION, TEST_MIN_ITERATIONS):
-                r = random.Random(12345)
-                with PerformanceCounter() as pc:
-                    for j in range(block_count):
-                        t0 = r.random() * (total_length - block_length)
-                        t1 = t0 + block_length
-                        mem = memory_usage((fmt().read_waveforms, (path, t0, t1, all_channels), {}), include_children = True, max_usage = True)
-                        mem_usage.append(mem)
-                counters.append(pc)
+            if (MEM_METHOD == 0):
+                mem_usage, counters = memory_usage((_run_read_test, (fmt, path, total_length, all_channels, block_length, block_count), {'test_min_dur': TEST_MIN_DURATION, 'test_min_iter': TEST_MIN_ITERATIONS, 'mem_method': MEM_METHOD}), include_children = True, max_usage = True, retval = True)
+            # mem_usage = []
+            else:
+                counters = _run_read_test(fmt, path, total_length, all_channels, block_length, block_count, test_min_dur =TEST_MIN_DURATION, test_min_iter = TEST_MIN_ITERATIONS, mem_method = MEM_METHOD)
             walltime = time.time() - time1
             
-            print('%6.0f %6.0f %8.0f %8.4f   %8.4f   (%8.4f/%8.4f/%8.4f) %6s read %d x %.0fs, all channels'
+            print('%6.0f %6.0f %8.0f %8.4f   %8.4f   %8.4f/%8.4f %6s read %d x %.0fs, all channels'
                   % (median_attr(counters, 'n_seek_calls'),
                      median_attr(counters, 'n_read_calls'),
                      median_attr(counters, 'n_bytes_read') / 1024,
                      median_attr(counters, 'cpu_seconds'),
                      walltime / len(counters),
-                     np.min(mem_usage), np.mean(mem_usage), np.max(mem_usage),
+                     median_attr(counters, 'curr_memory') if (MEM_METHOD != 0) else 0,
+                     median_attr(counters, 'max_memory') if (MEM_METHOD != 0) else  mem_usage,
                      '[%d]' % len(counters),
                      block_count,
                      block_length))
@@ -239,29 +273,21 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
 
         for block_length, block_count in TEST_BLOCK_LENGTHS:
             time1 = time.time()
-            # mem_usage, counters = memory_usage((_run_read_test_1channel, (fmt, path, total_length, all_channels, block_length, block_count), {}), include_children = True, max_usage = True, retval = True)
             counters = []
-            mem_usage = []
-            r = random.Random(12345)
-            for i in repeat_test(TEST_MIN_DURATION, TEST_MIN_ITERATIONS):
-                with PerformanceCounter() as pc:
-                    for j in range(block_count):
-                        t0 = r.random() * (total_length - block_length)
-                        t1 = t0 + block_length
-                        c = r.choice(all_channels)
-                        mem = memory_usage((fmt().read_waveforms, (path, t0, t1, [c]), {}), include_children = True, max_usage = True)
-                        mem_usage.append(mem)
-                        
-                counters.append(pc)
+            if (MEM_METHOD == 0):
+                mem_usage, counters = memory_usage((_run_read_test_1channel, (fmt, path, total_length, all_channels, block_length, block_count), {'test_min_dur': TEST_MIN_DURATION, 'test_min_iter': TEST_MIN_ITERATIONS, 'mem_method': MEM_METHOD}), include_children = True, max_usage = True, retval = True)
+            else:
+                counters = _run_read_test_1channel(fmt, path, total_length, all_channels, block_length, block_count, test_min_dur =TEST_MIN_DURATION, test_min_iter = TEST_MIN_ITERATIONS, mem_method = MEM_METHOD )
             walltime = time.time() - time1
             
-            print('%6.0f %6.0f %8.0f %8.4f   %8.4f   (%8.4f/%8.4f/%8.4f) %6s read %d x %.0fs, one channel'
+            print('%6.0f %6.0f %8.0f %8.4f   %8.4f   %8.4f/%8.4f %6s read %d x %.0fs, one channel'
                   % (median_attr(counters, 'n_seek_calls'),
                      median_attr(counters, 'n_read_calls'),
                      median_attr(counters, 'n_bytes_read') / 1024,
                      median_attr(counters, 'cpu_seconds'),
                      walltime / len(counters),
-                     np.min(mem_usage), np.mean(mem_usage), np.max(mem_usage),
+                     median_attr(counters, 'curr_memory') if (MEM_METHOD != 0) else 0,
+                     median_attr(counters, 'max_memory') if (MEM_METHOD != 0) else  mem_usage,
                      '[%d]' % len(counters),
                      block_count,
                      block_length))
