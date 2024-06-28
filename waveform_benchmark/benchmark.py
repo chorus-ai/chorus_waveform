@@ -26,6 +26,36 @@ def append_result(format_name, waveform_name, test_name, result, format_list, wa
     return format_list, waveform_list, test_list, result_list
 
 
+def compute_snr(reference_signal, output_signal):
+    """
+    Compute the signal-to-noise ratio (SNR) for the signal in decibels.
+    """
+
+    # Convert the data to NumPy arrays as needed.
+    reference_signal = np.asarray(reference_signal)
+    output_signal = np.asarray(output_signal)
+
+    # Check that the signals have the same dimensions and all finite values.
+    assert(np.array_equal(np.shape(reference_signal), np.shape(output_signal)))
+    assert(np.all(np.isfinite(reference_signal)) and np.all(np.isfinite(output_signal)))
+
+    # Compute the noise in the signal.
+    noise_signal = output_signal - reference_signal
+
+    # Compute the SNR with special handling for edge cases.
+    x = np.sum(reference_signal**2)
+    y = np.sum(noise_signal**2)
+
+    if x > 0 and y > 0:
+        snr = 10 * np.log10(x / y)
+    elif y == 0:
+        snr = float('inf')
+    else:
+        snr = float('nan')
+
+    return snr
+
+
 def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, waveform_list=None, test_list=None,
                    result_list=None):
 
@@ -139,8 +169,8 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
         # Loop over each waveform
         print("Fidelity check:")
         print()
-        print("Chunk\t\t Numeric Samples\t\t  NaN Samples")
-        print(f"\t# Errors  /  Total\t{'% Eq':^8}\tNaN Values Match")
+        print("Chunk\t\t\tNumeric Samples\t\t\t\t  NaN Samples")
+        print(f"\t# Errors  /  Total\t{'% Eq':^8}\t{'SNR':^8}\tNaN Values Match")
 
         for channel,waveform in waveforms.items():
             print(f"Signal: {channel}")
@@ -168,7 +198,7 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                 NANdiff = np.sum(np.isnan(data) != np.isnan(filedata))
                 numnan = np.sum(np.isnan(data))
                 numnanstr = f"{'N' if NANdiff else 'Y'} ({numnan})"
-                
+
                 # remove nans for equality check
                 data_nonan = data[~np.isnan(data)]
                 filedata_nonan = filedata[~np.isnan(data)]
@@ -177,9 +207,12 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                 isgood = np.isclose(filedata_nonan, data_nonan, atol=0.5/chunk['gain'])
                 numgood = np.sum(isgood)
                 fpeq_rel = numgood/len(data_nonan)
-                
+
+                # compute SNR to quantify signal fidelity
+                snr = compute_snr(data_nonan, filedata_nonan)
+
                 # print to table
-                print(f"{i_ch:^5}\t{len(data_nonan)-numgood:10}/{len(data_nonan):10}\t{fpeq_rel*100:^6.3f}\t\t{numnanstr:^16}")
+                print(f"{i_ch:^5}\t{len(data_nonan)-numgood:10}/{len(data_nonan):10}\t{fpeq_rel*100:^6.3f}\t\t{snr:^6.1f}\t\t{numnanstr:^16}")
 
                 # print up to 10 bad values if not all equal
                 if numgood != len(data_nonan):
