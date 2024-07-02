@@ -59,6 +59,9 @@ class AtriumDB(BaseFormat):
                 scale_m = 1 / sig_gain
                 scale_b = float(sig_baseline) / sig_gain
 
+            if time_data.size == 0:
+                continue
+
             sdk.write_data_easy(measure_id, chorus_device_id, time_data, value_data, freq_nhz,
                                 scale_m=scale_m, scale_b=scale_b)
 
