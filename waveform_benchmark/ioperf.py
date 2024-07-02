@@ -29,8 +29,11 @@ class PerformanceCounter:
       'cpu_seconds':  Number of seconds that the CPU was busy
                       (multiplied by the number of CPU cores in use.)
                       
-      'max_memory':       Memory usage in megabytes.
-
+      'max_rss': Maximum resident set size of the process during
+                        execution, in MB
+      'mem_used': Memory allocated by the process during execution, in MB
+      
+                      
     If the 'clear_cache' argument is true, then attempt to clear the
     system cache whenever a file is opened (so that 'n_bytes_read'
     should reflect the total number of bytes retrieved.)  Note that
@@ -39,21 +42,23 @@ class PerformanceCounter:
     filesystem (it won't work on tmpfs, for instance.)
     
     several methods have been tested:
-        1 is rusage
-        2 is tracemalloc
-        3 is psutils
-        0 is measurement outside of this function (e.g. memory_profiler).
-        each is reporting different numbers...  for now rusage is used. 
+        rusage, tracemalloc, psutil, memory_profiler
+        each is reporting different numbers.
+        
+        memory_profiler by default uses psutil.
+        rusage can only report maxrss
+        tracemalloc is reporting allocations.
+        
+        we will report a composite
     """
-    def __init__(self, clear_cache=True, mem_method = 0):
+    def __init__(self, clear_cache=True):
         self._clear_cache = clear_cache
         self.n_read_calls = 0
         self.n_seek_calls = 0
         self.n_bytes_read = 0
         self.cpu_seconds = 0
-        self.curr_memory = 0
-        self.max_memory = 0
-        self.mem_method = mem_method
+        tracemalloc.start()
+
 
     def __enter__(self):
         if self._clear_cache:
@@ -84,13 +89,7 @@ class PerformanceCounter:
         self._rusage_self = resource.getrusage(resource.RUSAGE_SELF)
         self._rusage_children = resource.getrusage(resource.RUSAGE_CHILDREN)
 
-        if self.mem_method == 2:
-            tracemalloc.start()
-            (self._curr_memory, self._max_memory) = tracemalloc.get_traced_memory()
-            tracemalloc.reset_peak()
-        elif self.mem_method == 3:
-            self._process = psutil.Process()
-            self._init_mem = self._process.memory_info().rss / float(2**20)
+        tracemalloc.reset_peak()
 
         return self
 
@@ -130,14 +129,11 @@ class PerformanceCounter:
                              - self._rusage_children.ru_utime
                              - self._rusage_children.ru_stime)
         
-        if self.mem_method == 1:
-            self.max_memory = (rusage_self.ru_maxrss) / float(2**10)
-        elif self.mem_method == 2:
-            (self.curr_memory, self.max_memory) = tracemalloc.get_traced_memory()
-            tracemalloc.stop()
-        elif self.mem_method == 3:
-            self.curr_memory = self._process.memory_info().rss / float(2**20)
-            self.max_memory = self._process.memory_info().vms / float(2**20) - self._init_mem
+        self.max_rss = (rusage_self.ru_maxrss + rusage_children.ru_maxrss) / float(2**10)
+        
+        (final_usage, peak_usage) = tracemalloc.get_traced_memory()
+        self.malloced = (peak_usage - final_usage) / (2**20)
+        tracemalloc.stop()
 
 _nocache_lock = threading.Lock()
 _nocache_supported = False
