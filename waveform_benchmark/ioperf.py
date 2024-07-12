@@ -7,8 +7,7 @@ import subprocess
 import sys
 import threading
 import tracemalloc
-import psutil
-
+import time
 class PerformanceCounter:
     """
     Context manager to measure CPU and I/O usage.
@@ -53,12 +52,12 @@ class PerformanceCounter:
     """
     def __init__(self, clear_cache=True, mem_profile = False):
         self._clear_cache = clear_cache
+        self.mem_profile = mem_profile
         self.n_read_calls = 0
         self.n_seek_calls = 0
         self.n_bytes_read = 0
         self.cpu_seconds = 0
-        self.mem_profile = mem_profile
-        if (mem_profile):
+        if (self.mem_profile):
             tracemalloc.start()
 
 
@@ -87,12 +86,14 @@ class PerformanceCounter:
             self.n_read_calls = math.nan
             self.n_seek_calls = math.nan
 
+        if (self.mem_profile):
+            tracemalloc.reset_peak()
+
+        self._walltime_start = time.time()
+
         # Measure past resource usage for this process and any children.
         self._rusage_self = resource.getrusage(resource.RUSAGE_SELF)
         self._rusage_children = resource.getrusage(resource.RUSAGE_CHILDREN)
-
-        if (self.mem_profile):
-            tracemalloc.reset_peak()
 
         return self
 
@@ -101,6 +102,9 @@ class PerformanceCounter:
         rusage_self = resource.getrusage(resource.RUSAGE_SELF)
         rusage_children = resource.getrusage(resource.RUSAGE_CHILDREN)
 
+        # Calculate wall time
+        self.walltime = time.time() - self._walltime_start    
+        
         with _nocache_lock:
             _nocache_enabled.discard(self)
 
@@ -115,12 +119,21 @@ class PerformanceCounter:
                 elif m.group(1) == b'lseek':
                     self.n_seek_calls += int(m.group(2))
 
+        if (self.mem_profile):
+            (final_usage, peak_usage) = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+
+            self.malloced = (peak_usage - final_usage) / (2**20)
+            self.max_rss = (rusage_self.ru_maxrss + rusage_children.ru_maxrss) / float(2**10)
+        
+
         # Calculate number of bytes read.  ru_inblock is always
         # measured in 512-byte blocks regardless of I/O block size.
         self.n_bytes_read += 512 * (rusage_self.ru_inblock
                                     + rusage_children.ru_inblock
                                     - self._rusage_self.ru_inblock
                                     - self._rusage_children.ru_inblock)
+
 
         # Calculate CPU seconds, including both user and kernel time.
         self.cpu_seconds += (rusage_self.ru_utime
@@ -131,13 +144,7 @@ class PerformanceCounter:
                              - self._rusage_self.ru_stime
                              - self._rusage_children.ru_utime
                              - self._rusage_children.ru_stime)
-        
-        if (self.mem_profile):
-            self.max_rss = (rusage_self.ru_maxrss + rusage_children.ru_maxrss) / float(2**10)
-        
-            (final_usage, peak_usage) = tracemalloc.get_traced_memory()
-            self.malloced = (peak_usage - final_usage) / (2**20)
-            tracemalloc.stop()
+
 
 _nocache_lock = threading.Lock()
 _nocache_supported = False

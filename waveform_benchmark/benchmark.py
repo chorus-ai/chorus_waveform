@@ -170,13 +170,13 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
         path = os.path.join(tempdir, 'wavetest')
 
         # Write the example data to a file or files.
-        time1 = time.time()
+        # time1 = time.time()
         with PerformanceCounter(mem_profile = mem_profile) as pc_write:
             if mem_profile:
                 mem_usage = memory_usage((fmt().write_waveforms, (path, waveforms), {}), include_children = True, max_usage = True)
             else:
                 fmt().write_waveforms(path, waveforms)
-        wall_time = time.time() - time1
+        # wall_time = time.time() - time1
         
         # Calculate total size of the file(s).
         output_size = 0
@@ -186,9 +186,10 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
 
         print('Output size:    %.0f KiB (%.2f bits/sample)'
               % (output_size / 1024, output_size * 8 / actual_samples))
-        print('Time to output: %.0f sec' % pc_write.cpu_seconds)
-        print('Wall Time: %.0f s' % wall_time)
-                
+        print('Time to output: %.4f sec' % pc_write.cpu_seconds)
+        # print('Wall Time: %.0f s' % wall_time)
+        print('Wall Time: %.4f s' % pc_write.walltime)
+        
         if (mem_profile):
             print('Memory Used (memory_profiler): %.0f MiB' % mem_usage)
             print('Maximum Memory Used (max_rss): %.0f MiB' % pc_write.max_rss)
@@ -273,13 +274,13 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
             
         for block_length, block_count in TEST_BLOCK_LENGTHS:
             
-            time1 = time.time()
+            # time1 = time.time()
             counters = []
             if (mem_profile):
                 mem_usage, counters = memory_usage((_run_read_test, (fmt, path, total_length, all_channels, block_length, block_count), {'test_min_dur': TEST_MIN_DURATION, 'test_min_iter': TEST_MIN_ITERATIONS, 'mem_profile': mem_profile}), include_children = True, max_usage = True, retval = True)
             else:
                 counters = _run_read_test(fmt, path, total_length, all_channels, block_length, block_count, test_min_dur = TEST_MIN_DURATION, test_min_iter = TEST_MIN_ITERATIONS, mem_profile = mem_profile)
-            walltime = time.time() - time1
+            # walltime = time.time() - time1
             
             if (mem_profile):
                 print('%6.0f %6.0f %8.0f %8.4f   %8.4f   %8.4f/%8.4f/%8.4f %6s read %d x %.0fs, all channels'
@@ -287,7 +288,8 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                         median_attr(counters, 'n_read_calls'),
                         median_attr(counters, 'n_bytes_read') / 1024,
                         median_attr(counters, 'cpu_seconds'),
-                        walltime / len(counters),
+                        median_attr(counters, 'walltime'), 
+                        # walltime / len(counters),
                         mem_usage,
                         median_attr(counters, 'max_rss'),
                         median_attr(counters, 'malloced'),
@@ -300,7 +302,7 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                         median_attr(counters, 'n_read_calls'),
                         median_attr(counters, 'n_bytes_read') / 1024,
                         median_attr(counters, 'cpu_seconds'),
-                        walltime / len(counters),
+                        median_attr(counters, 'walltime'), 
                         '[%d]' % len(counters),
                         block_count,
                         block_length))
@@ -314,13 +316,13 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                                                                                    result_list)
 
         for block_length, block_count in TEST_BLOCK_LENGTHS:
-            time1 = time.time()
+            # time1 = time.time()
             counters = []
             if (mem_profile):
                 mem_usage, counters = memory_usage((_run_read_test_1channel, (fmt, path, total_length, all_channels, block_length, block_count), {'test_min_dur': TEST_MIN_DURATION, 'test_min_iter': TEST_MIN_ITERATIONS, 'mem_profile': mem_profile}), include_children = True, max_usage = True, retval = True)
             else:
                 counters = _run_read_test_1channel(fmt, path, total_length, all_channels, block_length, block_count, test_min_dur = TEST_MIN_DURATION, test_min_iter = TEST_MIN_ITERATIONS, mem_profile = mem_profile)
-            walltime = time.time() - time1
+            # walltime = time.time() - time1
             
             if (mem_profile):
                 print('%6.0f %6.0f %8.0f %8.4f   %8.4f   %8.4f/%8.4f/%8.4f %6s read %d x %.0fs, one channel'
@@ -328,7 +330,8 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                         median_attr(counters, 'n_read_calls'),
                         median_attr(counters, 'n_bytes_read') / 1024,
                         median_attr(counters, 'cpu_seconds'),
-                        walltime / len(counters),
+                        # walltime / len(counters),
+                        median_attr(counters, 'walltime'),
                         mem_usage,
                         median_attr(counters, 'max_rss'),
                         median_attr(counters, 'malloced'),
@@ -341,7 +344,8 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                         median_attr(counters, 'n_read_calls'),
                         median_attr(counters, 'n_bytes_read') / 1024,
                         median_attr(counters, 'cpu_seconds'),
-                        walltime / len(counters),
+                        median_attr(counters, 'walltime'),
+                        # walltime / len(counters),
                         '[%d]' % len(counters),
                         block_count,
                         block_length))
