@@ -186,7 +186,7 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
 
         print('Output size:    %.0f KiB (%.2f bits/sample)'
               % (output_size / 1024, output_size * 8 / actual_samples))
-        print('Time to output: %.4f sec' % pc_write.cpu_seconds)
+        print('CPU time: %.4f sec' % pc_write.cpu_seconds)
         # print('Wall Time: %.0f s' % wall_time)
         print('Wall Time: %.4f s' % pc_write.walltime)
         
@@ -268,9 +268,9 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
         print('_' * 64)
         print('Read performance (median of N trials):')
         if (mem_profile):
-            print(' #seek  #read      KiB      sec   walltime      Mem MB (used/maxrss/malloced)    [N]')
+            print(' #seek  #read      KiB   CPU(s)    Wall(s)    Mem(MB)(used/maxrss/malloced)       [N]')
         else:
-            print(' #seek  #read      KiB      sec   walltime      [N]')
+            print(' #seek  #read      KiB   CPU(s)    Wall(s)        [N]')
             
         for block_length, block_count in TEST_BLOCK_LENGTHS:
             
@@ -283,7 +283,7 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
             # walltime = time.time() - time1
             
             if (mem_profile):
-                print('%6.0f %6.0f %8.0f %8.4f   %8.4f   %8.4f/%8.4f/%8.4f %6s read %d x %.0fs, all channels'
+                print('%6.0f %6.0f %8.0f %8.4f   %8.4f     %8.4f/%8.4f/%8.4f    %6s read %d x %.0fs, all channels'
                     % (median_attr(counters, 'n_seek_calls'),
                         median_attr(counters, 'n_read_calls'),
                         median_attr(counters, 'n_bytes_read') / 1024,
@@ -297,7 +297,7 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                         block_count,
                         block_length))
             else:
-                print('%6.0f %6.0f %8.0f %8.4f   %8.4f   %6s read %d x %.0fs, all channels'
+                print('%6.0f %6.0f %8.0f %8.4f   %8.4f     %6s read %d x %.0fs, all channels'
                     % (median_attr(counters, 'n_seek_calls'),
                         median_attr(counters, 'n_read_calls'),
                         median_attr(counters, 'n_bytes_read') / 1024,
@@ -325,7 +325,7 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
             # walltime = time.time() - time1
             
             if (mem_profile):
-                print('%6.0f %6.0f %8.0f %8.4f   %8.4f   %8.4f/%8.4f/%8.4f %6s read %d x %.0fs, one channel'
+                print('%6.0f %6.0f %8.0f %8.4f   %8.4f     %8.4f/%8.4f/%8.4f    %6s read %d x %.0fs, one channel'
                     % (median_attr(counters, 'n_seek_calls'),
                         median_attr(counters, 'n_read_calls'),
                         median_attr(counters, 'n_bytes_read') / 1024,
@@ -339,7 +339,7 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                         block_count,
                         block_length))
             else:
-                print('%6.0f %6.0f %8.0f %8.4f   %8.4f   %6s read %d x %.0fs, one channel'
+                print('%6.0f %6.0f %8.0f %8.4f   %8.4f     %6s read %d x %.0fs, one channel'
                     % (median_attr(counters, 'n_seek_calls'),
                         median_attr(counters, 'n_read_calls'),
                         median_attr(counters, 'n_bytes_read') / 1024,
