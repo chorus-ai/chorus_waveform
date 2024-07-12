@@ -424,21 +424,21 @@ class BaseDICOMFormat(BaseFormat):
 
         return out
 
-    def make_iod(self, iod_name: str, hifi: bool, num_channels: int = 1):
+    def make_iod(self, iod_name: str, bits: int, num_channels: int = 1):
         if iod_name == "GeneralECGWaveform":
-            return dcm_writer.GeneralECGWaveform(hifi=hifi)
+            return dcm_writer.GeneralECGWaveform(bits=bits)
         elif iod_name == "AmbulatoryECGWaveform":
-            return dcm_writer.AmbulatoryECGWaveform(hifi=hifi)
+            return dcm_writer.AmbulatoryECGWaveform(bits=bits)
         elif iod_name == "SleepEEGWaveform":
-            return dcm_writer.SleepEEGWaveform(hifi=hifi)
+            return dcm_writer.SleepEEGWaveform(bits=bits)
         elif iod_name == "ElectromyogramWaveform":
-            return dcm_writer.ElectromyogramWaveform(hifi=hifi)
+            return dcm_writer.ElectromyogramWaveform(bits=bits)
         elif iod_name == "ArterialPulseWaveform":
-            return dcm_writer.ArterialPulseWaveform(hifi=hifi)
+            return dcm_writer.ArterialPulseWaveform(bits=bits)
         elif iod_name == "RespiratoryWaveform":
-            return dcm_writer.RespiratoryWaveform(hifi=hifi, num_channels=num_channels)
+            return dcm_writer.RespiratoryWaveform(bits=bits, num_channels=num_channels)
         elif iod_name == "HemodynamicWaveform":
-            return dcm_writer.HemodynamicWaveform(hifi=hifi)
+            return dcm_writer.HemodynamicWaveform(bits=bits)
         else:
             raise ValueError("Unknown IOD")
 
@@ -506,7 +506,7 @@ class BaseDICOMFormat(BaseFormat):
             # print("writing ", iod_name, ", ", file_id)
 
             # create and iod instance
-            iod = self.make_iod(iod_name, hifi=self.hifi, num_channels = count_per_iod[iod_name])
+            iod = self.make_iod(iod_name, bits=self.bits, num_channels = count_per_iod[iod_name])
    
             # each multiplex group can have its own frequency
             # but if there are different frequencies for channels in a multiplex group, we need to split.
@@ -780,28 +780,36 @@ class DICOMHighBits(BaseDICOMFormat):
 
     writer = dcm_writer.DICOMWaveformWriter()
     chunkSize = None # adaptive
-    hifi = True
+    bits = 64 # max possible bits
 
 
 class DICOMLowBits(BaseDICOMFormat):
 
     writer = dcm_writer.DICOMWaveformWriter()
     chunkSize = None  # adaptive
-    hifi = False
+    bits = 0  # min possible bits
 
+class DICOM16Bits(BaseDICOMFormat):
+
+    writer = dcm_writer.DICOMWaveformWriter()
+    chunkSize = None  # adaptive
+    bits = 16
 
 class DICOMHighBitsChunked(DICOMHighBits):
     # waveform lead names to dicom IOD mapping.   Incomplete.
     # avoiding 12 lead ECG because of the limit in number of samples.
 
     chunkSize = 3600.0  # chunk as 1 hr.
-    hifi = True
 
 
 class DICOMLowBitsChunked(DICOMLowBits):
 
     chunkSize = 3600.0
-    hifi = False
+
+
+class DICOM16BitsChunked(DICOM16Bits):
+
+    chunkSize = 3600.0
 
 
 class DICOMHighBitsMerged(DICOMHighBits):
@@ -809,10 +817,14 @@ class DICOMHighBitsMerged(DICOMHighBits):
     # avoiding 12 lead ECG because of the limit in number of samples.
 
     chunkSize = -1
-    hifi = True
 
 
 class DICOMLowBitsMerged(DICOMLowBits):
 
     chunkSize = -1
-    hifi = False
+
+
+class DICOM16BitsMerged(DICOM16Bits):
+
+    chunkSize = -1
+

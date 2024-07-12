@@ -133,7 +133,7 @@ class DICOMWaveformIOD:
 
     
 class TwelveLeadECGWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
+    def __init__(self, bits: int = 16, num_channels: int = None):
         pass
         
     VR = DICOMWaveform16
@@ -158,8 +158,8 @@ class TwelveLeadECGWaveform(DICOMWaveformIOD):
     
 # 4 groups, 1 to 24 channels each. unknown sample count limit., f in 200-1000
 class GeneralECGWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
-        if hifi:
+    def __init__(self, bits: int = 16, num_channels: int = None):
+        if bits > 16:
             self.VR = DICOMWaveform32
             self.storage_uid = '1.2.840.10008.5.1.4.1.1.9.1.4'
         else:
@@ -186,7 +186,7 @@ class GeneralECGWaveform(DICOMWaveformIOD):
     
 
 class AmbulatoryECGWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
+    def __init__(self, bits : int = 16, num_channels: int = None):
         pass
         
     # 8bit allowed, but gain may be too high for 8 bit
@@ -198,7 +198,7 @@ class AmbulatoryECGWaveform(DICOMWaveformIOD):
     }
 
 class CardiacElectrophysiologyWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
+    def __init__(self, bits : int = 16, num_channels: int = None):
         pass
     
     VR = DICOMWaveform16
@@ -210,7 +210,7 @@ class CardiacElectrophysiologyWaveform(DICOMWaveformIOD):
 
 # max 4 sequences, up to 8 channels each, num of samples limited by waveform maxsize. f < 400,
 class HemodynamicWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
+    def __init__(self, bits : int = 16, num_channels: int = None):
         pass
     
     VR = DICOMWaveform16
@@ -232,8 +232,8 @@ class HemodynamicWaveform(DICOMWaveformIOD):
     
 # max 1 sequence, 1 wave each. unknown sample count limit. f < 600.
 class ArterialPulseWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
-        # if hifi:
+    def __init__(self, bits : int = 16, num_channels: int = None):
+        # if bits > 8:
         #     self.VR = DICOMWaveform16
         # else:
         #     self.VR = DICOMWaveform8
@@ -253,9 +253,9 @@ class ArterialPulseWaveform(DICOMWaveformIOD):
     
 # different IOD for multiple channels.  1 multplex group, 1 channel each. unknown sample count limit. f < 100.
 class RespiratoryWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
+    def __init__(self, bits : int = 16, num_channels: int = None):
         if num_channels <= 1:
-            # if hifi:
+            # if bits > 8:
             #     self.VR = DICOMWaveform16
             # else:
             #     self.VR = DICOMWaveform8
@@ -263,7 +263,7 @@ class RespiratoryWaveform(DICOMWaveformIOD):
             self.VR = DICOMWaveform16
             self.storage_uid = uid.RespiratoryWaveformStorage
         elif num_channels > 1:
-            if hifi:
+            if bits > 16:
                 self.VR = DICOMWaveform32
             else:
                 self.VR = DICOMWaveform16
@@ -280,8 +280,8 @@ class RespiratoryWaveform(DICOMWaveformIOD):
     }
         
 class RoutineScalpEEGWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
-        if hifi:
+    def __init__(self, bits : int = 16, num_channels: int = None):
+        if bits > 16:
             self.VR = DICOMWaveform32
         else:
             self.VR = DICOMWaveform16
@@ -294,8 +294,8 @@ class RoutineScalpEEGWaveform(DICOMWaveformIOD):
 
 # unlimited number of multiplex groups, up to 64 channels each.  sample size and f unconstrained.
 class SleepEEGWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
-        if hifi:
+    def __init__(self, bits : int = 16, num_channels: int = None):
+        if bits > 16:
             self.VR = DICOMWaveform32
         else:
             self.VR = DICOMWaveform16
@@ -314,8 +314,8 @@ class SleepEEGWaveform(DICOMWaveformIOD):
     
 #unlimited multiplex groups, up to 64 channels each.  sample size and f unconstrained.
 class ElectromyogramWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
-        if hifi:
+    def __init__(self, bits : int = 16, num_channels: int = None):
+        if bits > 16:
             self.VR = DICOMWaveform32
         else:
             self.VR = DICOMWaveform16
