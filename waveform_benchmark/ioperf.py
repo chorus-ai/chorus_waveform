@@ -51,13 +51,15 @@ class PerformanceCounter:
         
         we will report a composite
     """
-    def __init__(self, clear_cache=True):
+    def __init__(self, clear_cache=True, mem_profile = False):
         self._clear_cache = clear_cache
         self.n_read_calls = 0
         self.n_seek_calls = 0
         self.n_bytes_read = 0
         self.cpu_seconds = 0
-        tracemalloc.start()
+        self.mem_profile = mem_profile
+        if (mem_profile):
+            tracemalloc.start()
 
 
     def __enter__(self):
@@ -89,7 +91,8 @@ class PerformanceCounter:
         self._rusage_self = resource.getrusage(resource.RUSAGE_SELF)
         self._rusage_children = resource.getrusage(resource.RUSAGE_CHILDREN)
 
-        tracemalloc.reset_peak()
+        if (self.mem_profile):
+            tracemalloc.reset_peak()
 
         return self
 
@@ -129,11 +132,12 @@ class PerformanceCounter:
                              - self._rusage_children.ru_utime
                              - self._rusage_children.ru_stime)
         
-        self.max_rss = (rusage_self.ru_maxrss + rusage_children.ru_maxrss) / float(2**10)
+        if (self.mem_profile):
+            self.max_rss = (rusage_self.ru_maxrss + rusage_children.ru_maxrss) / float(2**10)
         
-        (final_usage, peak_usage) = tracemalloc.get_traced_memory()
-        self.malloced = (peak_usage - final_usage) / (2**20)
-        tracemalloc.stop()
+            (final_usage, peak_usage) = tracemalloc.get_traced_memory()
+            self.malloced = (peak_usage - final_usage) / (2**20)
+            tracemalloc.stop()
 
 _nocache_lock = threading.Lock()
 _nocache_supported = False
