@@ -175,27 +175,29 @@ def get_multiplex_array(fileobj : BinaryIO,
         chseq = cast(list["Dataset"], channel_seqs)
         
         # Apply correction factor (if possible)
+        padd_loc = (arr == padding_value)
         arr = arr.astype("float")
         for ch_idx, ch in enumerate(chseq):
             baseline = float(ch.ChannelBaseline)
             sensitivity = float(ch.ChannelSensitivity)
             correction = float(ch.ChannelSensitivityCorrectionFactor)
-            # nominal = v * gain = (encoded * sensitivity - baseline)   -  see reader.
-            # v = nominal * correction
+            
+            # print("baseline " + str(baseline) + " sensitivity " + str(sensitivity) + " correction " + str(correction)) 
+
             adjustment = sensitivity * correction
-            base = baseline * correction
+            base = baseline
             # print(" reading ", ch_idx, sensitivity, baseline, correction, adjustment, base)
             if (adjustment != 1.0):
                 if (base != 0.0):
-                    arr[ch_idx, ...] = np.where(arr[ch_idx, ...] == padding_value, np.nan, arr[ch_idx, ...] * adjustment - base)
+                    arr[ch_idx, ...] = np.where(padd_loc[ch_idx, ...], np.nan, arr[ch_idx, ...] * adjustment - base)
                 else:
-                    arr[ch_idx, ...] = np.where(arr[ch_idx, ...] == padding_value, np.nan, arr[ch_idx, ...] * adjustment)
+                    arr[ch_idx, ...] = np.where(padd_loc[ch_idx, ...], np.nan, arr[ch_idx, ...] * adjustment)
             else:
                 if (base != 0.0):
-                    arr[ch_idx, ...] = np.where(arr[ch_idx, ...] == padding_value, np.nan, arr[ch_idx, ...] - base)
+                    arr[ch_idx, ...] = np.where(padd_loc[ch_idx, ...], np.nan, arr[ch_idx, ...] - base)
                 else:
-                    arr[ch_idx, ...] = np.where(arr[ch_idx, ...] == padding_value, np.nan, arr[ch_idx, ...])
-
+                    arr[ch_idx, ...] = np.where(padd_loc[ch_idx, ...], np.nan, arr[ch_idx, ...])
+            # print(ch.ChannelSourceSequence[0].CodeMeaning + " sensitivity " + str(sensitivity) + " gain = " + str(1.0 / sensitivity) + " baseline = " + str(baseline) + " correction = " + str(correction)) 
 
     return cast("np.ndarray", arr)
 
