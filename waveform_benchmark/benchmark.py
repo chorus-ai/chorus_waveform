@@ -57,7 +57,7 @@ def compute_snr(reference_signal, output_signal):
 
 
 def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, waveform_list=None, test_list=None,
-                   result_list=None):
+                   result_list=None, test_only = False):
 
     # Load the class we will be testing
     module_name, class_name = format_class.rsplit('.', 1)
@@ -222,67 +222,69 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                     print(filedata_nonan[~isgood][:10])
                     print(f"(Gain: {chunk['gain']})")
             # print('_' * 64)
-        print('_' * 64)
-        print('Read performance (median of N trials):')
-        print(' #seek  #read      KiB      sec     [N]')
+            
+        if not test_only:    
+            print('_' * 64)
+            print('Read performance (median of N trials):')
+            print(' #seek  #read      KiB      sec     [N]')
 
-        for block_length, block_count in TEST_BLOCK_LENGTHS:
-            counters = []
-            for i in repeat_test(TEST_MIN_DURATION, TEST_MIN_ITERATIONS):
+            for block_length, block_count in TEST_BLOCK_LENGTHS:
+                counters = []
+                for i in repeat_test(TEST_MIN_DURATION, TEST_MIN_ITERATIONS):
+                    r = random.Random(12345)
+                    with PerformanceCounter() as pc:
+                        for j in range(block_count):
+                            t0 = r.random() * (total_length - block_length)
+                            t1 = t0 + block_length
+                            fmt().read_waveforms(path, t0, t1, all_channels)
+                    counters.append(pc)
+
+                print('%6.0f %6.0f %8.0f %8.4f  %6s read %d x %.0fs, all channels'
+                    % (median_attr(counters, 'n_seek_calls'),
+                        median_attr(counters, 'n_read_calls'),
+                        median_attr(counters, 'n_bytes_read') / 1024,
+                        median_attr(counters, 'cpu_seconds'),
+                        '[%d]' % len(counters),
+                        block_count,
+                        block_length))
+
+                if format_list is not None:
+                    # Append read time result
+                    format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
+                                                                                    f'{block_count}_all',
+                                                                                    median_attr(counters, 'cpu_seconds'),
+                                                                                    format_list,
+                                                                                    waveform_list, test_list,
+                                                                                    result_list)
+
+            for block_length, block_count in TEST_BLOCK_LENGTHS:
+                counters = []
                 r = random.Random(12345)
-                with PerformanceCounter() as pc:
-                    for j in range(block_count):
-                        t0 = r.random() * (total_length - block_length)
-                        t1 = t0 + block_length
-                        fmt().read_waveforms(path, t0, t1, all_channels)
-                counters.append(pc)
+                for i in repeat_test(TEST_MIN_DURATION, TEST_MIN_ITERATIONS):
+                    with PerformanceCounter() as pc:
+                        for j in range(block_count):
+                            t0 = r.random() * (total_length - block_length)
+                            t1 = t0 + block_length
+                            c = r.choice(all_channels)
+                            fmt().read_waveforms(path, t0, t1, [c])
+                    counters.append(pc)
 
-            print('%6.0f %6.0f %8.0f %8.4f  %6s read %d x %.0fs, all channels'
-                  % (median_attr(counters, 'n_seek_calls'),
-                     median_attr(counters, 'n_read_calls'),
-                     median_attr(counters, 'n_bytes_read') / 1024,
-                     median_attr(counters, 'cpu_seconds'),
-                     '[%d]' % len(counters),
-                     block_count,
-                     block_length))
+                print('%6.0f %6.0f %8.0f %8.4f  %6s read %d x %.0fs, one channel'
+                    % (median_attr(counters, 'n_seek_calls'),
+                        median_attr(counters, 'n_read_calls'),
+                        median_attr(counters, 'n_bytes_read') / 1024,
+                        median_attr(counters, 'cpu_seconds'),
+                        '[%d]' % len(counters),
+                        block_count,
+                        block_length))
 
-            if format_list is not None:
-                # Append read time result
-                format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
-                                                                                   f'{block_count}_all',
-                                                                                   median_attr(counters, 'cpu_seconds'),
-                                                                                   format_list,
-                                                                                   waveform_list, test_list,
-                                                                                   result_list)
-
-        for block_length, block_count in TEST_BLOCK_LENGTHS:
-            counters = []
-            r = random.Random(12345)
-            for i in repeat_test(TEST_MIN_DURATION, TEST_MIN_ITERATIONS):
-                with PerformanceCounter() as pc:
-                    for j in range(block_count):
-                        t0 = r.random() * (total_length - block_length)
-                        t1 = t0 + block_length
-                        c = r.choice(all_channels)
-                        fmt().read_waveforms(path, t0, t1, [c])
-                counters.append(pc)
-
-            print('%6.0f %6.0f %8.0f %8.4f  %6s read %d x %.0fs, one channel'
-                  % (median_attr(counters, 'n_seek_calls'),
-                     median_attr(counters, 'n_read_calls'),
-                     median_attr(counters, 'n_bytes_read') / 1024,
-                     median_attr(counters, 'cpu_seconds'),
-                     '[%d]' % len(counters),
-                     block_count,
-                     block_length))
-
-            if format_list:
-                format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
-                                                                                   f'{block_count}_one',
-                                                                                   median_attr(counters, 'cpu_seconds'),
-                                                                                   format_list,
-                                                                                   waveform_list, test_list,
-                                                                                   result_list)
+                if format_list:
+                    format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
+                                                                                    f'{block_count}_one',
+                                                                                    median_attr(counters, 'cpu_seconds'),
+                                                                                    format_list,
+                                                                                    waveform_list, test_list,
+                                                                                    result_list)
 
     print('_' * 64)
 

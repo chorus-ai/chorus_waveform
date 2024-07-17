@@ -82,6 +82,9 @@ def main():
     ap.add_argument('--waveform_suite_summary_file', '-w',
                     default='waveform_suite_benchmark_summary.csv',
                     help='Save a CSV summary of the waveform suite run to this path/file')
+    ap.add_argument('--test_only', 
+                    default=False, action='store_true',
+                    help='Run only the tests, do not run the benchmarks')
     opts = ap.parse_args()
 
     # If log is requested send the output there
@@ -121,7 +124,8 @@ def main():
     else:
         run_benchmarks(input_record=opts.input_record,
                        format_class=opts.format_class,
-                       pn_dir=opts.physionet_directory)
+                       pn_dir=opts.physionet_directory,
+                       test_only = opts.test_only)
 
     # Close the log file after the run is complete
     if opts.save_output_to_log:
