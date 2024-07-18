@@ -9,7 +9,7 @@ The benchmarking script includes a simple set of metrics to evaluate the perform
 The [waveform_benchmark.py](./waveform_benchmark.py) script is the entrypoint for running benchmarks. This script calls functions in the `waveform_benchmark` package. The syntax for running waveform_benchmark.py from the command line is: 
 
 ```
-./waveform_benchmark.py -r <PATH_TO_RECORD> -f <PATH_TO_BENCHMARK_CLASS> -p <PHYSIONET_DATABASE_PATH>
+./waveform_benchmark.py -r <PATH_TO_RECORD> -f <PATH_TO_BENCHMARK_CLASS> -p <PHYSIONET_DATABASE_PATH> [-m]
 ```
 
 The `-p` argument can be used to pull a file directly from a PhysioNet database but isn't needed when running on a local file. For example, to run the `WFDBFormat516` benchmark on local record `data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648`:
@@ -70,6 +70,45 @@ This pulls all files for this benchmarking run directly from PhysioNet databases
 If our CSV file is `benchmark_files.csv`, we can run it with this command:
 ```
 ./waveform_benchmark.py -s benchmark_files.csv
+```
+
+## Memory Usage Profiling
+The `-m` (or `--memory_profiling`) flag can be used to profile memory usage.  When included, the screen output for the write operation and the read benchmark will include memory usage information, including maximum total memory used (via python rusage), memory used during the individual operations (via python memory_profiler package), and memory allocated during the individual operations (via python tracemalloc package).  These results measure different aspects of memory consumption and therefore will differ from each other.  
+
+Memory profiling defaults to off as it adds significantly to running time. 
+
+```
+./waveform_benchmark.py -r ./data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648 -f waveform_benchmark.formats.wfdb.WFDBFormat516 -m
+```
+
+which will produce write operation results in the following format (mimic p100 dataset, npy.NPY_Uncompressed format)
+
+```
+________________________________________________________________
+Output size:    802503 KiB (33.01 bits/sample)
+CPU time: 0.9273 sec
+Wall Time: 0.8973 s
+Memory Used (memory_profiler): 2103 MiB
+Maximum Memory Used (max_rss): 2395 MiB
+Memory Malloced (tracemalloc): 410 MiB
+________________________________________________________________
+```
+
+and read benchmark results in the following format
+
+```
+________________________________________________________________
+Read performance (median of N trials):
+ #seek  #read      KiB   CPU(s)    Wall(s)    Mem(MB)(used/maxrss/malloced)       [N]
+     0     -1      800   0.0050     0.0108     1929.7539/4096.9531/  0.0281     [617] read 1 x 214981s, all channels
+     0     -1     3988   0.0238     0.0556     1929.9531/4096.9531/  0.0285     [157] read 5 x 500s, all channels
+     0     -1    39802   0.2333     0.5109     1930.5352/4096.9531/  0.0587      [18] read 50 x 50s, all channels
+     0     -1   398300   2.8431     6.0166     1929.8516/4096.9531/  0.0668       [3] read 500 x 5s, all channels
+     0     -1      800   0.0056     0.0120     1932.0195/4096.9531/  0.0281     [608] read 1 x 214981s, one channel
+     0     -1     3988   0.0234     0.0528     1929.9453/4096.9531/  0.0285     [173] read 5 x 500s, one channel
+     0     -1    39838   0.2572     0.5380     1929.9531/4096.9531/  0.0590      [18] read 50 x 50s, one channel
+     0     -1   397980   1.9419     4.2143     1930.0781/4096.9531/  0.0701       [3] read 500 x 5s, one channel
+________________________________________________________________
 ```
 
 ## Adding a new format to the benchmarks
