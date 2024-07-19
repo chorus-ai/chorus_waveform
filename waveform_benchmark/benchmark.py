@@ -206,7 +206,7 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                 # use numpy's isclose to determine floating point equality
                 isgood = np.isclose(filedata_nonan, data_nonan, atol=0.5/chunk['gain'])
                 numgood = np.sum(isgood)
-                fpeq_rel = numgood/len(data_nonan)
+                fpeq_rel = numgood/len(data_nonan) if len(data_nonan) != 0 else np.nan
 
                 # compute SNR to quantify signal fidelity
                 snr = compute_snr(data_nonan, filedata_nonan)

@@ -501,8 +501,10 @@ class DICOMWaveformWriter:
                         
             # only process if there is finite data.        
             temp_data = waveforms[channel]['chunks'][chunkid]['samples'][channel_start:channel_start+duration]
-            if (temp_data is None) or (len(temp_data) == 0) or (not np.any(np.isfinite(temp_data))):
-                continue 
+            if (temp_data is None) or (len(temp_data) == 0):
+                continue
+            # in case it's all nans or infs
+            all_nan = (not np.any(np.isfinite(temp_data)))
 
             # assign ids for each channel
             if channel not in channels.keys():
@@ -512,8 +514,8 @@ class DICOMWaveformWriter:
                 gains[channel] = []
                 i += 1
 
-            mins[channel].append(np.fmin.reduce(temp_data))
-            maxs[channel].append(np.fmax.reduce(temp_data))
+            mins[channel].append(0 if all_nan else np.fmin.reduce(temp_data))
+            maxs[channel].append(0 if all_nan else np.fmax.reduce(temp_data))
             gains[channel].append(waveforms[channel]['chunks'][chunkid]['gain'])
             unprocessed_chunks.append((channel, chunkid, channel_start, target_start, target_start + duration))
 
