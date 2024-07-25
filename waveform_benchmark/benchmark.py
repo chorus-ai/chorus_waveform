@@ -46,13 +46,14 @@ def _run_read_test(fmt, path, total_length, all_channels, block_length, block_co
 def _run_read_test_1channel(fmt, path, total_length, all_channels, block_length, block_count,
                             test_min_dur = 10, test_min_iter = 3, mem_profile = False):
     counters = []
+    r = random.Random(12345)
     for i in repeat_test(test_min_dur, test_min_iter):
-        r = random.Random(12345)
         with PerformanceCounter(mem_profile = mem_profile) as pc:
             for j in range(block_count):
                 t0 = r.random() * (total_length - block_length)
                 t1 = t0 + block_length
-                fmt().read_waveforms(path, t0, t1, all_channels)    
+                c = r.choice(all_channels)
+                fmt().read_waveforms(path, t0, t1, [c])    
         counters.append(pc)
     return counters
 
@@ -87,7 +88,7 @@ def compute_snr(reference_signal, output_signal):
 
 
 def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, waveform_list=None, test_list=None,
-                   result_list=None, mem_profile = False):
+                   result_list=None, mem_profile = False, test_only = False):
 
     # Load the class we will be testing
     module_name, class_name = format_class.rsplit('.', 1)
@@ -249,7 +250,7 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                 # use numpy's isclose to determine floating point equality
                 isgood = np.isclose(filedata_nonan, data_nonan, atol=0.5/chunk['gain'])
                 numgood = np.sum(isgood)
-                fpeq_rel = numgood/len(data_nonan)
+                fpeq_rel = numgood/len(data_nonan) if len(data_nonan) != 0 else np.nan
 
                 # compute SNR to quantify signal fidelity
                 snr = compute_snr(data_nonan, filedata_nonan)
@@ -265,97 +266,97 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                     print(filedata_nonan[~isgood][:10])
                     print(f"(Gain: {chunk['gain']})")
             # print('_' * 64)
-        print('_' * 64)
-        print('Read performance (median of N trials):')
-        if (mem_profile):
-            print(' #seek  #read      KiB   CPU(s)    Wall(s)    Mem(MB)(used/maxrss/malloced)       [N]')
-        else:
-            print(' #seek  #read      KiB   CPU(s)    Wall(s)        [N]')
-            
-        for block_length, block_count in TEST_BLOCK_LENGTHS:
-            
-            # time1 = time.time()
-            counters = []
+        if not test_only:
+            print('_' * 64)
+            print('Read performance (median of N trials):')
             if (mem_profile):
-                mem_usage, counters = memory_usage((_run_read_test, (fmt, path, total_length, all_channels, block_length, block_count), {'test_min_dur': TEST_MIN_DURATION, 'test_min_iter': TEST_MIN_ITERATIONS, 'mem_profile': mem_profile}), include_children = True, max_usage = True, retval = True)
+                print(' #seek  #read      KiB   CPU(s)    Wall(s)    Mem(MB)(used/maxrss/malloced)       [N]')
             else:
-                counters = _run_read_test(fmt, path, total_length, all_channels, block_length, block_count, test_min_dur = TEST_MIN_DURATION, test_min_iter = TEST_MIN_ITERATIONS, mem_profile = mem_profile)
-            # walltime = time.time() - time1
-            
-            if (mem_profile):
-                print('%6.0f %6.0f %8.0f %8.4f   %8.4f     %8.4f/%8.4f/%8.4f    %6s read %d x %.0fs, all channels'
-                    % (median_attr(counters, 'n_seek_calls'),
-                        median_attr(counters, 'n_read_calls'),
-                        median_attr(counters, 'n_bytes_read') / 1024,
-                        median_attr(counters, 'cpu_seconds'),
-                        median_attr(counters, 'walltime'), 
-                        # walltime / len(counters),
-                        mem_usage,
-                        median_attr(counters, 'max_rss'),
-                        median_attr(counters, 'malloced'),
-                        '[%d]' % len(counters),
-                        block_count,
-                        block_length))
-            else:
-                print('%6.0f %6.0f %8.0f %8.4f   %8.4f     %6s read %d x %.0fs, all channels'
-                    % (median_attr(counters, 'n_seek_calls'),
-                        median_attr(counters, 'n_read_calls'),
-                        median_attr(counters, 'n_bytes_read') / 1024,
-                        median_attr(counters, 'cpu_seconds'),
-                        median_attr(counters, 'walltime'), 
-                        '[%d]' % len(counters),
-                        block_count,
-                        block_length))
-            if format_list is not None:
-                # Append read time result
-                format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
-                                                                                   f'{block_count}_all',
-                                                                                   median_attr(counters, 'cpu_seconds'),
-                                                                                   format_list,
-                                                                                   waveform_list, test_list,
-                                                                                   result_list)
+                print(' #seek  #read      KiB   CPU(s)    Wall(s)        [N]')
+                
+            for block_length, block_count in TEST_BLOCK_LENGTHS:
+                
+                # time1 = time.time()
+                counters = []
+                if (mem_profile):
+                    mem_usage, counters = memory_usage((_run_read_test, (fmt, path, total_length, all_channels, block_length, block_count), {'test_min_dur': TEST_MIN_DURATION, 'test_min_iter': TEST_MIN_ITERATIONS, 'mem_profile': mem_profile}), include_children = True, max_usage = True, retval = True)
+                else:
+                    counters = _run_read_test(fmt, path, total_length, all_channels, block_length, block_count, test_min_dur = TEST_MIN_DURATION, test_min_iter = TEST_MIN_ITERATIONS, mem_profile = mem_profile)
+                # walltime = time.time() - time1
+                
+                if (mem_profile):
+                    print('%6.0f %6.0f %8.0f %8.4f   %8.4f     %8.4f/%8.4f/%8.4f    %6s read %d x %.0fs, all channels'
+                        % (median_attr(counters, 'n_seek_calls'),
+                            median_attr(counters, 'n_read_calls'),
+                            median_attr(counters, 'n_bytes_read') / 1024,
+                            median_attr(counters, 'cpu_seconds'),
+                            median_attr(counters, 'walltime'), 
+                            # walltime / len(counters),
+                            mem_usage,
+                            median_attr(counters, 'max_rss'),
+                            median_attr(counters, 'malloced'),
+                            '[%d]' % len(counters),
+                            block_count,
+                            block_length))
+                else:
+                    print('%6.0f %6.0f %8.0f %8.4f   %8.4f     %6s read %d x %.0fs, all channels'
+                        % (median_attr(counters, 'n_seek_calls'),
+                            median_attr(counters, 'n_read_calls'),
+                            median_attr(counters, 'n_bytes_read') / 1024,
+                            median_attr(counters, 'cpu_seconds'),
+                            median_attr(counters, 'walltime'), 
+                            '[%d]' % len(counters),
+                            block_count,
+                            block_length))
+                if format_list is not None:
+                    # Append read time result
+                    format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
+                                                                                    f'{block_count}_all',
+                                                                                    median_attr(counters, 'cpu_seconds'),
+                                                                                    format_list,
+                                                                                    waveform_list, test_list,
+                                                                                    result_list)
 
-        for block_length, block_count in TEST_BLOCK_LENGTHS:
-            # time1 = time.time()
-            counters = []
-            if (mem_profile):
-                mem_usage, counters = memory_usage((_run_read_test_1channel, (fmt, path, total_length, all_channels, block_length, block_count), {'test_min_dur': TEST_MIN_DURATION, 'test_min_iter': TEST_MIN_ITERATIONS, 'mem_profile': mem_profile}), include_children = True, max_usage = True, retval = True)
-            else:
-                counters = _run_read_test_1channel(fmt, path, total_length, all_channels, block_length, block_count, test_min_dur = TEST_MIN_DURATION, test_min_iter = TEST_MIN_ITERATIONS, mem_profile = mem_profile)
-            # walltime = time.time() - time1
-            
-            if (mem_profile):
-                print('%6.0f %6.0f %8.0f %8.4f   %8.4f     %8.4f/%8.4f/%8.4f    %6s read %d x %.0fs, one channel'
-                    % (median_attr(counters, 'n_seek_calls'),
-                        median_attr(counters, 'n_read_calls'),
-                        median_attr(counters, 'n_bytes_read') / 1024,
-                        median_attr(counters, 'cpu_seconds'),
-                        # walltime / len(counters),
-                        median_attr(counters, 'walltime'),
-                        mem_usage,
-                        median_attr(counters, 'max_rss'),
-                        median_attr(counters, 'malloced'),
-                        '[%d]' % len(counters),
-                        block_count,
-                        block_length))
-            else:
-                print('%6.0f %6.0f %8.0f %8.4f   %8.4f     %6s read %d x %.0fs, one channel'
-                    % (median_attr(counters, 'n_seek_calls'),
-                        median_attr(counters, 'n_read_calls'),
-                        median_attr(counters, 'n_bytes_read') / 1024,
-                        median_attr(counters, 'cpu_seconds'),
-                        median_attr(counters, 'walltime'),
-                        # walltime / len(counters),
-                        '[%d]' % len(counters),
-                        block_count,
-                        block_length))
-            if format_list:
-                format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
-                                                                                   f'{block_count}_one',
-                                                                                   median_attr(counters, 'cpu_seconds'),
-                                                                                   format_list,
-                                                                                   waveform_list, test_list,
-                                                                                   result_list)
+            for block_length, block_count in TEST_BLOCK_LENGTHS:
+                counters = []
+                if (mem_profile):
+                    mem_usage, counters = memory_usage((_run_read_test_1channel, (fmt, path, total_length, all_channels, block_length, block_count), {'test_min_dur': TEST_MIN_DURATION, 'test_min_iter': TEST_MIN_ITERATIONS, 'mem_profile': mem_profile}), include_children = True, max_usage = True, retval = True)
+                else:
+                    counters = _run_read_test_1channel(fmt, path, total_length, all_channels, block_length, block_count, test_min_dur = TEST_MIN_DURATION, test_min_iter = TEST_MIN_ITERATIONS, mem_profile = mem_profile)
+                # walltime = time.time() - time1
+                
+                if (mem_profile):
+                    print('%6.0f %6.0f %8.0f %8.4f   %8.4f     %8.4f/%8.4f/%8.4f    %6s read %d x %.0fs, one channels'
+                        % (median_attr(counters, 'n_seek_calls'),
+                            median_attr(counters, 'n_read_calls'),
+                            median_attr(counters, 'n_bytes_read') / 1024,
+                            median_attr(counters, 'cpu_seconds'),
+                            median_attr(counters, 'walltime'), 
+                            # walltime / len(counters),
+                            mem_usage,
+                            median_attr(counters, 'max_rss'),
+                            median_attr(counters, 'malloced'),
+                            '[%d]' % len(counters),
+                            block_count,
+                            block_length))
+                else:
+                    print('%6.0f %6.0f %8.0f %8.4f   %8.4f     %6s read %d x %.0fs, one channels'
+                        % (median_attr(counters, 'n_seek_calls'),
+                            median_attr(counters, 'n_read_calls'),
+                            median_attr(counters, 'n_bytes_read') / 1024,
+                            median_attr(counters, 'cpu_seconds'),
+                            median_attr(counters, 'walltime'), 
+                            '[%d]' % len(counters),
+                            block_count,
+                            block_length))
+
+                if format_list:
+                    format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
+                                                                                    f'{block_count}_one',
+                                                                                    median_attr(counters, 'cpu_seconds'),
+                                                                                    format_list,
+                                                                                    waveform_list, test_list,
+                                                                                    result_list)
 
     print('_' * 64)
 

@@ -82,6 +82,9 @@ def main():
     ap.add_argument('--waveform_suite_summary_file', '-w',
                     default='waveform_suite_benchmark_summary.csv',
                     help='Save a CSV summary of the waveform suite run to this path/file')
+    ap.add_argument('--test_only', 
+                    default=False, action='store_true',
+                    help='Run only the tests, do not run the benchmarks')
     ap.add_argument('--memory_profiling', '-m',
                     default=False, type=bool, action=argparse.BooleanOptionalAction,
                     help='Run memory profiling on the benchmarking process')
@@ -117,6 +120,7 @@ def main():
                                                                                 waveform_list=waveform_list,
                                                                                 test_list=test_list,
                                                                                 result_list=result_list,
+                                                                                test_only = opts.test_only,
                                                                                 mem_profile = opts.memory_profile)
 
         save_summary(format_list, waveform_list, test_list, result_list, opts.waveform_suite_summary_file)
@@ -126,6 +130,7 @@ def main():
         run_benchmarks(input_record=opts.input_record,
                        format_class=opts.format_class,
                        pn_dir=opts.physionet_directory,
+                       test_only = opts.test_only,
                        mem_profile = opts.memory_profiling)
 
     # Close the log file after the run is complete

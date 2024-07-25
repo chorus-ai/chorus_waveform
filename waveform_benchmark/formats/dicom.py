@@ -16,6 +16,8 @@ from datetime import datetime
 import pandas as pd
 import pprint
 
+import uuid
+
 import warnings
 # warnings.filterwarnings("error")
 from pydicom.fileset import FileSet, RecordNode
@@ -186,6 +188,7 @@ class BaseDICOMFormat(BaseFormat):
                              'end_time': chunk['end_time'], 
                             #  'start_sample': chunk['start_sample'], 
                             #  'end_sample': chunk['end_sample'],
+                             'gain': chunk['gain'],
                              'iod': iod.__name__,
                              'group': group,
                              'freq_id': None})
@@ -197,12 +200,13 @@ class BaseDICOMFormat(BaseFormat):
                              'end_time': chunk['end_time'], 
                             #  'start_sample': chunk['start_sample'], 
                             #  'end_sample': chunk['end_sample'],
+                             'gain': chunk['gain'],
                              'iod': iod.__name__,
                              'group': group,
                              'freq_id': None})
 
         df = pd.DataFrame(data)
-        df.sort_values(by=['iod', 'start_time', 'freq', 'chunk_id'], inplace=True)
+        df.sort_values(by=['iod', 'start_time', 'freq', 'gain', 'chunk_id'], inplace=True)
 
         # assign freq_id, one per frequency within a group
         sorted = df.groupby(['iod', 'group'])
@@ -284,57 +288,58 @@ class BaseDICOMFormat(BaseFormat):
         # do group by
         return out
 
-    # input:  list of dataframes, each dataframe is a group of channels with same iod, group, and frequency.
-    # return: dict, each entry is (iod, group, freq, id) = {start_t, end_t, [{(channel, chunk_id): (s_time, e_time), ...]}.  each chunk is defined as the max span for a set of channels.
-    # this is detected via a stack - when stack is empty, a subchunk is created.  note that chunkids are not aligned between channels
-    def split_chunks_temporal_merged(self, chunk_table: pd.DataFrame) -> dict:
-        # split the chunks so that each is a collection of channels in a group.
-        # fill missing channels with zeros
-        # need an ordering of channel starting and ending
-        # create new table with time stamp, and chunk id (- for start, + for end)
-        # sort in order:  iod, group, freq, timestamp, chunk id
-        # iterate and push and pop to queue (parenthesis like). create a chunk when queue becomes empty.
+    # # Deprecate - this does not work if there are multiple gains in the same chunk.   
+    # # input:  list of dataframes, each dataframe is a group of channels with same iod, group, and frequency.
+    # # return: dict, each entry is (iod, group, freq, id) = {start_t, end_t, [{(channel, chunk_id): (s_time, e_time), ...]}.  each chunk is defined as the max span for a set of channels.
+    # # this is detected via a stack - when stack is empty, a subchunk is created.  note that chunkids are not aligned between channels
+    # def split_chunks_temporal_merged(self, chunk_table: pd.DataFrame) -> dict:
+    #     # split the chunks so that each is a collection of channels in a group.
+    #     # fill missing channels with zeros
+    #     # need an ordering of channel starting and ending
+    #     # create new table with time stamp, and chunk id (- for start, + for end)
+    #     # sort in order:  iod, group, freq, timestamp, chunk id
+    #     # iterate and push and pop to queue (parenthesis like). create a chunk when queue becomes empty.
 
-        chunk_table.sort_values(by=['iod', 'freq_id', 'start_time', 'chunk_id'], inplace=True)
-        sorted = chunk_table.groupby(['iod', 'freq_id'])
+    #     chunk_table.sort_values(by=['iod', 'freq_id', 'gain', 'start_time', 'chunk_id'], inplace=True)
+    #     sorted = chunk_table.groupby(['iod', 'freq_id', 'gain'])
 
-        out = dict()
-        file_id = 0
-        stime = None
-        etime = None
-        stack = []
-        channel_chunk_list = dict()  # store the (channel, chunk_id)
-        for (iod, freq_id), df in sorted:
-            for index, row in df.iterrows():
-                # update first
-                etime = row['end_time']
-                if row['chunk_id'] < 0:
-                    stack.append((row['channel'], (-row['chunk_id']) - 1))  # start of chunk
-                    channel_chunk_list[(row['channel'], (-row['chunk_id']) - 1)] = row['group']  # add on insert only
-                    # save if needed
-                    if len(stack) == 1:
-                        # inserted first element in the stack
-                        stime = row['start_time']
-                elif row['chunk_id'] > 0:
-                    stack.remove((row['channel'], row['chunk_id'] - 1))  # end of chunk
-                    # update end time on remove only
-                    if len(stack) == 0:
-                        # everything removed from a stack. this indicates a subchunk is complete
-                        if len(channel_chunk_list) > 0:
-                            out[(iod, freq_id, file_id)] = {'start_t': stime, 'end_t': etime, 'channel_chunk': channel_chunk_list.copy()}
-                            file_id += 1
-                        channel_chunk_list = {}  # reset
-                        stime = None
-                        etime = None
-                else:
-                    print("ERROR:  chunk id is 0", row)
+    #     out = dict()
+    #     file_id = 0
+    #     stime = None
+    #     etime = None
+    #     stack = []
+    #     channel_chunk_list = dict()  # store the (channel, chunk_id)
+    #     for (iod, freq_id), df in sorted:
+    #         for index, row in df.iterrows():
+    #             # update first
+    #             etime = row['end_time']
+    #             if row['chunk_id'] < 0:
+    #                 stack.append((row['channel'], (-row['chunk_id']) - 1))  # start of chunk
+    #                 channel_chunk_list[(row['channel'], (-row['chunk_id']) - 1)] = row['group']  # add on insert only
+    #                 # save if needed
+    #                 if len(stack) == 1:
+    #                     # inserted first element in the stack
+    #                     stime = row['start_time']
+    #             elif row['chunk_id'] > 0:
+    #                 stack.remove((row['channel'], row['chunk_id'] - 1))  # end of chunk
+    #                 # update end time on remove only
+    #                 if len(stack) == 0:
+    #                     # everything removed from a stack. this indicates a subchunk is complete
+    #                     if len(channel_chunk_list) > 0:
+    #                         out[(iod, freq_id, file_id)] = {'start_t': stime, 'end_t': etime, 'channel_chunk': channel_chunk_list.copy()}
+    #                         file_id += 1
+    #                     channel_chunk_list = {}  # reset
+    #                     stime = None
+    #                     etime = None
+    #             else:
+    #                 print("ERROR:  chunk id is 0", row)
 
-        return out
+    #     return out
 
     # input:  list of dataframes, each dataframe is a group of channels with same iod, group, and frequency.
     # return: dict, each entry is (iod, group, freq, id) = {start_t, end_t, [(channel, chunk_id), ...]}.  each chunk is a fixed time period.
     # we should first detect the merged chunks then segment the chunks. 
-    def split_chunks_temporal_fixed(self, chunk_table: pd.DataFrame, duration_sec: float = 600.0) -> dict:
+    def split_chunks_temporal_fixed(self, chunk_table: pd.DataFrame, duration_sec: float = 3600.0) -> dict:
         # split the chunks so that each is a fixed length with appropriate grouping. some may have partial data
         # need an ordering of channel starting and ending.
         # create new table with time stamp, and chunk id (- for start, + for end)
@@ -347,7 +352,7 @@ class BaseDICOMFormat(BaseFormat):
         # sorted = self.split_chunks_temporal_merged(chunk_table)
         # # next process each subchunk:
 
-        chunk_table.sort_values(by=['iod', 'freq_id', 'start_time', 'chunk_id'], inplace=True)
+        chunk_table.sort_values(by=['iod', 'freq_id', 'gain', 'start_time', 'chunk_id'], inplace=True)
         sorted = chunk_table.groupby(['iod', 'freq_id'])
 
         # for each subchunk, get the start and end, and insert splitters.
@@ -375,6 +380,7 @@ class BaseDICOMFormat(BaseFormat):
                             'chunk_id': 0,  # note:  this will occur before the end time entries.
                             'start_time': splitter_time, 
                             'end_time': splitter_time,
+                            'gain': -1,
                             'iod': "any",
                             'group': -1,
                             'freq_id': -1})
@@ -399,7 +405,7 @@ class BaseDICOMFormat(BaseFormat):
                 if row['chunk_id'] < 0:
                     k = (row['channel'], (-row['chunk_id']) - 1)
                     stack.append(k)  # start of chunk
-                    added[k] = row['group']  # add on insert only
+                    added[k] = (row['group'], row['gain'])  # add on insert only
                     # save if needed
 
                 elif row['chunk_id'] > 0:
@@ -412,8 +418,30 @@ class BaseDICOMFormat(BaseFormat):
                     # everything removed from a stack. this indicates a subchunk is complete
                     if len(added) > 0:
                         splitter_end = row['start_time']
-                        out[(iod, freq_id, file_id)] = {'start_t': splitter_start, 'end_t': splitter_end, 'channel_chunk': added.copy()}
-                        file_id += 1
+                        
+                        # check for multiple gains for same channel.  Separate by gain
+                        gains = {}
+                        for (ch, _), (_, gain) in added.items():
+                            if ch not in gains.keys():
+                                gains[ch] = set()
+                            gains[ch].add(gain)
+                        # the number of files to create is the max number of gains for any channel
+                        nfiles = max([len(x) for x in gains.values()])
+                        # convert set to list
+                        gains = {ch: list(gains[ch]) for ch in gains.keys()}
+                        # now split the added dict by file id
+                        to_add_groups = []
+                        for i in range(nfiles):
+                            to_add_groups.append({})
+                        
+                        for (channel, chunk_id), (group, gain) in added.items():
+                            id = gains[channel].index(gain)
+                            to_add_groups[id][(channel, chunk_id)] = group                         
+                        
+                        for i in range(nfiles):
+                            out[(iod, freq_id, file_id)] = {'start_t': splitter_start, 'end_t': splitter_end, 'channel_chunk': to_add_groups[i].copy()}
+                            file_id += 1
+                            
                         splitter_start = splitter_end
                         # update he added list by any queued deletes.
                         for x in deleted:
@@ -422,21 +450,21 @@ class BaseDICOMFormat(BaseFormat):
 
         return out
 
-    def make_iod(self, iod_name: str, hifi: bool, num_channels: int = 1):
+    def make_iod(self, iod_name: str, bits: int, num_channels: int = 1):
         if iod_name == "GeneralECGWaveform":
-            return dcm_writer.GeneralECGWaveform(hifi=hifi)
+            return dcm_writer.GeneralECGWaveform(bits=bits)
         elif iod_name == "AmbulatoryECGWaveform":
-            return dcm_writer.AmbulatoryECGWaveform(hifi=hifi)
+            return dcm_writer.AmbulatoryECGWaveform(bits=bits)
         elif iod_name == "SleepEEGWaveform":
-            return dcm_writer.SleepEEGWaveform(hifi=hifi)
+            return dcm_writer.SleepEEGWaveform(bits=bits)
         elif iod_name == "ElectromyogramWaveform":
-            return dcm_writer.ElectromyogramWaveform(hifi=hifi)
+            return dcm_writer.ElectromyogramWaveform(bits=bits)
         elif iod_name == "ArterialPulseWaveform":
-            return dcm_writer.ArterialPulseWaveform(hifi=hifi)
+            return dcm_writer.ArterialPulseWaveform(bits=bits)
         elif iod_name == "RespiratoryWaveform":
-            return dcm_writer.RespiratoryWaveform(hifi=hifi, num_channels=num_channels)
+            return dcm_writer.RespiratoryWaveform(bits=bits, num_channels=num_channels)
         elif iod_name == "HemodynamicWaveform":
-            return dcm_writer.HemodynamicWaveform(hifi=hifi)
+            return dcm_writer.HemodynamicWaveform(bits=bits)
         else:
             raise ValueError("Unknown IOD")
 
@@ -445,7 +473,21 @@ class BaseDICOMFormat(BaseFormat):
             print(key, ": ", value['start_t'], " ", value['end_t'])
             for k, v in value['channel_chunk'].items():
                 print("        ", k, v)
-
+                
+    # # get channel min and max values, across chunks.
+    # def _get_waveform_channel_minmax(self, waveforms):
+    #     minmax = {}
+    #     for channel, wf in waveforms.items():
+    #         mins = [ np.fmin.reduce(chunk['samples']) for chunk in wf['chunks'] ]
+    #         maxs = [ np.fmax.reduce(chunk['samples']) for chunk in wf['chunks'] ]
+    #         gains = list(set([ chunk['gain'] for chunk in wf['chunks'] ]))
+    #         if len(gains) != 1:
+    #             raise ValueError("ERROR: more than 1 gain for a channel")
+            
+    #         minmax[channel] = (np.fmin.reduce(mins), np.fmax.reduce(maxs), gains[0])
+    #     return minmax
+        
+        
     def write_waveforms(self, path, waveforms):
         fs = FileSet()
 
@@ -470,11 +512,12 @@ class BaseDICOMFormat(BaseFormat):
             subchunks1 = self.split_chunks_temporal_fixed(channel_table, duration_sec = self.chunkSize)
             # print("FIXED", len(subchunks1))
             # self._pretty_print(subchunks1)
-        else:
-            subchunks1 = self.split_chunks_temporal_merged(channel_table)
-            # print("merged", len(subchunks1))
-            # self._pretty_print(subchunks1)
-
+        # else:
+        #     subchunks1 = self.split_chunks_temporal_merged(channel_table)
+        #     # print("merged", len(subchunks1))
+        #     # self._pretty_print(subchunks1)
+    
+        # minmax = self._get_waveform_channel_minmax(waveforms)    
         #========== now write out =============
 
         # count channels belonging to respiratory data this is needed for the iod
@@ -492,7 +535,7 @@ class BaseDICOMFormat(BaseFormat):
             # print("writing ", iod_name, ", ", file_id)
 
             # create and iod instance
-            iod = self.make_iod(iod_name, hifi=self.hifi, num_channels = count_per_iod[iod_name])
+            iod = self.make_iod(iod_name, bits=self.bits, num_channels = count_per_iod[iod_name])
    
             # each multiplex group can have its own frequency
             # but if there are different frequencies for channels in a multiplex group, we need to split.
@@ -503,8 +546,12 @@ class BaseDICOMFormat(BaseFormat):
             dicom = self.writer.set_study_info(dicom, studyUID = studyInstanceUID, studyDate = datetime.now())
             dicom = self.writer.set_series_info(dicom, iod, seriesUID=seriesInstanceUID)
             dicom = self.writer.set_waveform_acquisition_info(dicom, instanceNumber = file_id)
-            dicom = self.writer.add_waveform_chunks_multiplexed(dicom, iod, chunk_info, waveforms)        
-
+            dicom = self.writer.add_waveform_chunks_multiplexed(dicom, iod, chunk_info, waveforms)
+            
+            if dicom is None:
+                # no wave sequence written.  skip
+                continue
+            
             # Save DICOM file.  write_like_original is required
             # these the initial path when added - it points to a temp file.
             # instance = fs.add(dicom)
@@ -513,6 +560,7 @@ class BaseDICOMFormat(BaseFormat):
             record = Dataset()
             record.DirectoryRecordType = "WAVEFORM"
             record.ReferencedSOPInstanceUIDInFile = dicom.SOPInstanceUID
+            record.ReferencedSOPClassUIDInFile = dicom.SOPClassUID
             record.InstanceNumber = dicom.InstanceNumber
             record.ContentDate = dicom.ContentDate
             record.ContentTime = dicom.ContentTime
@@ -571,6 +619,8 @@ class BaseDICOMFormat(BaseFormat):
         # fs.copy(path)
         # print(path)
         fs.write(path)
+        # copy to a directory with randomly generated name
+        # fs.copy('/mnt/c/Users/tcp19/BACKUP/dicom_waveform/' + str(uuid.uuid4()))
 
     def read_waveforms(self, path, start_time, end_time, signal_names):
         # have to read the whole data set each time if using dcmread.  this is not efficient.
@@ -597,15 +647,14 @@ class BaseDICOMFormat(BaseFormat):
                 samples = [int(x) for x in str.split(item[0x0099, 0x1012].value, sep = ',')]
                 stimes = [float(x) for x in str.split(item[0x0099, 0x1001].value, sep = ',')]
                 etimes = [x + float(y) / z for x, y, z in zip(stimes, samples, freqs)]
-
+                
                 channels = str.split(item[0x0099, 0x1021].value, sep = ',')
                 canonical_channels = [x.upper() for x in channels]
                 group_ids = [ int(x) for x in str.split(item[0x0099, 0x1022].value, sep = ',')]
                 chan_ids = [int(x) for x in str.split(item[0x0099, 0x1023].value, sep = ',')]
 
                 # get group ids and set of channels for all available channels.
-                for (i, chan) in enumerate(channels):
-                    group_id = group_ids[i]
+                for (chan, group_id, chan_id) in zip(channels, group_ids, chan_ids):
                     stime = stimes[group_id]
                     etime = etimes[group_id]
 
@@ -624,7 +673,7 @@ class BaseDICOMFormat(BaseFormat):
 
                     # original channel name
                     channel_info = {'channel': chan,
-                                    'channel_idx': chan_ids[i],
+                                    'channel_idx': chan_id,
                                     'freq': freqs[group_id],
                                     'number_samples': samples[group_id],
                                     'start_time': stime}
@@ -738,12 +787,13 @@ class BaseDICOMFormat(BaseFormat):
 
                         # init the output if not previously allocated
                         if requested_channel_name not in output.keys():
-                            output[requested_channel_name] = np.full(shape = max_len, fill_value = np.nan, dtype=np.float64)
+                            output[requested_channel_name] = np.full(shape = max_len, fill_value = np.nan, dtype=np.float32)
 
                         # copy the data to the output
                         # print("copy ", arrs[group_idx].shape, " to ", output[channel].shape, 
                         #       " from ", target_start, " to ", target_end)
-                        output[requested_channel_name][target_start:target_end] = arrs[group_idx][channel_idx, 0:nsamps]
+                        new_vals = arrs[group_idx][channel_idx, 0:nsamps]
+                        output[requested_channel_name][target_start:target_end] = np.where(np.isfinite(new_vals), new_vals, output[requested_channel_name][target_start:target_end])
 
         t2 = time.time()
         d3 = t2 - t1
@@ -763,39 +813,51 @@ class DICOMHighBits(BaseDICOMFormat):
 
     writer = dcm_writer.DICOMWaveformWriter()
     chunkSize = None # adaptive
-    hifi = True
+    bits = 64 # max possible bits
 
 
 class DICOMLowBits(BaseDICOMFormat):
 
     writer = dcm_writer.DICOMWaveformWriter()
     chunkSize = None  # adaptive
-    hifi = False
+    bits = 0  # min possible bits
 
+class DICOM16Bits(BaseDICOMFormat):
+
+    writer = dcm_writer.DICOMWaveformWriter()
+    chunkSize = None  # adaptive
+    bits = 16
 
 class DICOMHighBitsChunked(DICOMHighBits):
     # waveform lead names to dicom IOD mapping.   Incomplete.
     # avoiding 12 lead ECG because of the limit in number of samples.
 
-    chunkSize = 86400.0  # chunk as 1 day.
-    hifi = True
+    chunkSize = 3600.0  # chunk as 1 hr.
 
 
 class DICOMLowBitsChunked(DICOMLowBits):
 
-    chunkSize = 86400.0
-    hifi = False
+    chunkSize = 3600.0
 
 
-class DICOMHighBitsMerged(DICOMHighBits):
-    # waveform lead names to dicom IOD mapping.   Incomplete.
-    # avoiding 12 lead ECG because of the limit in number of samples.
+class DICOM16BitsChunked(DICOM16Bits):
 
-    chunkSize = -1
-    hifi = True
+    chunkSize = 3600.0
 
 
-class DICOMLowBitsMerged(DICOMLowBits):
+# class DICOMHighBitsMerged(DICOMHighBits):
+#     # waveform lead names to dicom IOD mapping.   Incomplete.
+#     # avoiding 12 lead ECG because of the limit in number of samples.
 
-    chunkSize = -1
-    hifi = False
+#     chunkSize = -1
+
+
+# class DICOMLowBitsMerged(DICOMLowBits):
+
+#     chunkSize = -1
+
+
+# class DICOM16BitsMerged(DICOM16Bits):
+
+#     chunkSize = -1
+

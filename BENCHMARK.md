@@ -9,7 +9,7 @@ The benchmarking script includes a simple set of metrics to evaluate the perform
 The [waveform_benchmark.py](./waveform_benchmark.py) script is the entrypoint for running benchmarks. This script calls functions in the `waveform_benchmark` package. The syntax for running waveform_benchmark.py from the command line is: 
 
 ```
-./waveform_benchmark.py -r <PATH_TO_RECORD> -f <PATH_TO_BENCHMARK_CLASS> -p <PHYSIONET_DATABASE_PATH> [-m]
+./waveform_benchmark.py -r <PATH_TO_RECORD> -f <PATH_TO_BENCHMARK_CLASS> -p <PHYSIONET_DATABASE_PATH> [--test_only] [-m]
 ```
 
 The `-p` argument can be used to pull a file directly from a PhysioNet database but isn't needed when running on a local file. For example, to run the `WFDBFormat516` benchmark on local record `data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648`:
@@ -17,6 +17,8 @@ The `-p` argument can be used to pull a file directly from a PhysioNet database 
 ```
 ./waveform_benchmark.py -r ./data/waveforms/mimic_iv/waves/p100/p10079700/85594648/85594648 -f waveform_benchmark.formats.wfdb.WFDBFormat516
 ```
+
+The `--test_only` flag can be used to turn off the read performance benchmarking thus run only the fidelity tests.
 
 An example output is provided below:
 
