@@ -12,6 +12,7 @@ from waveform_benchmark.input import load_wfdb_signals
 from waveform_benchmark.ioperf import PerformanceCounter
 from waveform_benchmark.utils import repeat_test
 from waveform_benchmark.utils import median_attr
+from waveform_benchmark.utils import convert_time_value_pairs_to_nan_array
 
 
 def append_result(format_name, waveform_name, test_name, result, format_list, waveform_list, test_list, result_list):
@@ -156,7 +157,11 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                 # read chunk from file
                 filedata = fmt().read_waveforms(path, st, et, [channel])
                 filedata = filedata[channel]
-                
+
+                # Check if the filedata is in time-value pair format
+                if isinstance(filedata, tuple):
+                    filedata = convert_time_value_pairs_to_nan_array(filedata, waveform, st, et)
+
                 # compare values
 
                 # check arrays are same size
