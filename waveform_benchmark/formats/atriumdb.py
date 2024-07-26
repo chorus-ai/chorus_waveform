@@ -115,6 +115,11 @@ class AtriumDB(BaseFormat):
             read_time_data, read_value_data, headers = sdk.block.decode_blocks(encoded_bytes, num_bytes_list, analog=True,
                                                                   time_type=1)
 
+            # Truncate unneeded values.
+            left = np.searchsorted(read_time_data, start_time_nano, side='left')
+            right = np.searchsorted(read_time_data, end_time_nano, side='left')
+            read_time_data, read_value_data = read_time_data[left:right], read_value_data[left:right]
+
             results[signal_name] = (read_time_data, read_value_data)
 
         return results
