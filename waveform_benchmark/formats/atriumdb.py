@@ -1,3 +1,5 @@
+import bisect
+
 import numpy as np
 from waveform_benchmark.formats.base import BaseFormat
 
@@ -5,6 +7,8 @@ from atriumdb import AtriumSDK
 
 sdk: AtriumSDK = None
 block_cache = None
+start_cache = None
+end_cache = None
 filename_dict = None
 
 
@@ -19,8 +23,8 @@ class AtriumDB(BaseFormat):
         if sdk is None:
             sdk = AtriumSDK.create_dataset(dataset_location=path)
             sdk = AtriumSDK(dataset_location=path, num_threads=1)
-            sdk.block.block_size = 131072
-            # sdk.block.block_size = 1024
+            # Set the block size to 16 times less than the default.
+            sdk.block.block_size = 131072 // 16
         device_tag = "chorus"
         chorus_device_id = sdk.insert_device(device_tag=device_tag)
         sdk.get_device_info(chorus_device_id)
@@ -29,6 +33,7 @@ class AtriumDB(BaseFormat):
         # For example: waveforms['V5'] -> {'units': 'mV', 'samples_per_second': 360, 'chunks': [{'start_time': 0.0, 'end_time': 1805.5555555555557, 'start_sample': 0, 'end_sample': 650000, 'gain': 200.0, 'samples': array([-0.065, -0.065, -0.065, ..., -0.365, -0.335,  0.   ], dtype=float32)}]}
         for name, waveform in waveforms.items():
             freq_hz = waveform['samples_per_second']
+            # sdk.block.block_size = int(freq_hz * 5)  # Dynamic block size, 5 seconds per block
             freq_nhz = int(freq_hz * (10 ** 9))
             period_ns = (10 ** 18) // freq_nhz
             measure_id = sdk.insert_measure(measure_tag=name, freq=freq_hz, freq_units="Hz")
@@ -77,10 +82,9 @@ class AtriumDB(BaseFormat):
 
     def read_waveforms(self, path, start_time, end_time, signal_names):
         assert sdk is not None, "SDK should have been initialized in writing phase"
-        global block_cache
-        global filename_dict
+        global block_cache, start_cache, end_cache, filename_dict
         if block_cache is None:
-            block_cache, filename_dict = generate_block_cache(sdk)
+            block_cache, start_cache, end_cache, filename_dict = generate_block_cache(sdk)
 
         start_time_nano = int(start_time * (10 ** 9))
         end_time_nano = int(end_time * (10 ** 9))
@@ -95,7 +99,8 @@ class AtriumDB(BaseFormat):
             freq_nhz = sdk.get_measure_info(new_measure_id)['freq_nhz']
 
             # Get blocks from cache
-            block_list = find_blocks(block_cache, new_measure_id, new_device_id, start_time_nano, end_time_nano)
+            block_list = find_blocks(block_cache, start_cache, end_cache, new_measure_id, new_device_id,
+                                     start_time_nano, end_time_nano)
             if len(block_list) == 0:
                 results[signal_name] = np.array([], dtype=np.float32)
                 continue
@@ -116,7 +121,7 @@ class AtriumDB(BaseFormat):
 
 
 def generate_block_cache(cache_sdk):
-    cache = {}
+    b_cache, s_cache, e_cache = {}, {}, {}
     query = """
     SELECT id, measure_id, device_id, file_id, start_byte, num_bytes, start_time_n, end_time_n, num_values
     FROM block_index
@@ -131,52 +136,45 @@ def generate_block_cache(cache_sdk):
     filename_dict = cache_sdk.get_filename_dict(file_id_list)
     for block in block_query_result:
         block_id, measure_id, device_id, file_id, start_byte, num_bytes, start_time, end_time, num_values = block
-        if measure_id not in cache:
-            cache[measure_id] = {}
+        if measure_id not in b_cache:
+            b_cache[measure_id] = {}
+            s_cache[measure_id] = {}
+            e_cache[measure_id] = {}
 
-        measure_cache = cache[measure_id]
+        measure_cache = b_cache[measure_id]
 
         if device_id not in measure_cache:
             measure_cache[device_id] = []
+            s_cache[measure_id][device_id] = []
+            e_cache[measure_id][device_id] = []
 
         measure_cache[device_id].append(block)
+        s_cache[measure_id][device_id].append(block[6])
+        e_cache[measure_id][device_id].append(block[7])
 
-    return cache, filename_dict
+    return b_cache, s_cache, e_cache, filename_dict
 
 
-def find_blocks(cache, measure_id, device_id, start_time, end_time):
-    if measure_id not in cache or device_id not in cache[measure_id]:
+def find_blocks(b_cache, s_cache, e_cache, measure_id, device_id, start_time, end_time):
+    if measure_id not in b_cache or device_id not in b_cache[measure_id]:
         return []
 
-    blocks = cache[measure_id][device_id]
+    blocks = b_cache[measure_id][device_id]
+    starts = s_cache[measure_id][device_id]
+    ends = e_cache[measure_id][device_id]
 
-    start_idx = None
-    end_idx = None
+    start_idx = bisect.bisect_left(ends, start_time)
+    end_idx = bisect.bisect_left(ends, end_time)
 
-    for i, block in enumerate(blocks):
-        block_start_time = block[6]
-        block_end_time = block[7]
+    if start_idx == end_idx:
+        if start_idx >= len(starts):
+            return []
+        if (not (starts[start_idx] <= start_time <= ends[start_idx])
+                and not (starts[end_idx] <= end_time <= ends[end_idx])):
+            return []
 
-        # Find start_idx
-        if start_idx is None and block_start_time > start_time:
-            start_idx = i
-
-        if start_idx is None and block_start_time <= start_time < block_end_time:
-            start_idx = i
-
-        # Find end_idx
-        if block_start_time <= end_time < block_end_time:
-            end_idx = i
-            break
-        elif block_start_time > end_time:
-            end_idx = i - 1
-            break
-
-    # Handle cases where start_idx or end_idx are not set
-    if start_idx is None:
-        start_idx = len(blocks)
-    if end_idx is None:
-        end_idx = len(blocks) - 1
+    if end_idx < len(starts) and end_time < starts[end_idx]:
+        end_idx = max(0, end_idx - 1)
 
     return blocks[start_idx:end_idx + 1]
 
