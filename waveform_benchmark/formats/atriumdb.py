@@ -34,7 +34,7 @@ class AtriumDB(BaseFormat):
         for name, waveform in waveforms.items():
             freq_hz = waveform['samples_per_second']
             # sdk.block.block_size = int(freq_hz * 5)  # Dynamic block size, 5 seconds per block
-            freq_nhz = int(freq_hz * (10 ** 9))
+            freq_nhz = round(freq_hz * (10 ** 9))
             period_ns = (10 ** 18) // freq_nhz
             measure_id = sdk.insert_measure(measure_tag=name, freq=freq_hz, freq_units="Hz")
 
@@ -89,20 +89,26 @@ class AtriumDB(BaseFormat):
         start_time_nano = int(start_time * (10 ** 9))
         end_time_nano = int(end_time * (10 ** 9))
 
-        measures = {measure['tag']: measure['id'] for _, measure in sdk._measures.items()}
+        measures = {measure['tag']: (measure['id'], measure['freq_nhz']) for _, measure in sdk._measures.items()}
         new_device_id = sdk.get_device_id("chorus")
 
         # Read Data
         results = {}
         for signal_name in signal_names:
-            new_measure_id = measures[signal_name]
-            freq_nhz = sdk.get_measure_info(new_measure_id)['freq_nhz']
+            new_measure_id, freq_nhz = measures[signal_name]
 
             # Get blocks from cache
             block_list = find_blocks(block_cache, start_cache, end_cache, new_measure_id, new_device_id,
                                      start_time_nano, end_time_nano)
             if len(block_list) == 0:
-                results[signal_name] = np.array([], dtype=np.float32)
+                freq_hz = freq_nhz / (10 ** 9)
+                start_frame = round(start_time * freq_hz)
+                end_frame = round(end_time * freq_hz)
+                num_samples = end_frame - start_frame
+                nan_values = np.empty(num_samples, dtype=np.float32)
+                if num_samples > 0:
+                    nan_values[:] = np.nan
+                results[signal_name] = nan_values
                 continue
 
             read_list = condense_byte_read_list(block_list)
