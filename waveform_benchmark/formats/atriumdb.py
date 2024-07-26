@@ -24,7 +24,7 @@ class AtriumDB(BaseFormat):
             sdk = AtriumSDK.create_dataset(dataset_location=path)
             sdk = AtriumSDK(dataset_location=path, num_threads=1)
             # Set the block size to 16 times less than the default.
-            sdk.block.block_size = 131072 // 16
+            sdk.block.block_size = 131072 // 8
         device_tag = "chorus"
         chorus_device_id = sdk.insert_device(device_tag=device_tag)
         sdk.get_device_info(chorus_device_id)
