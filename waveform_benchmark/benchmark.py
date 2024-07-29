@@ -30,9 +30,9 @@ def append_result(format_name, waveform_name, test_name, result, format_list, wa
 
 def _run_read_test(fmt, path, total_length, all_channels, block_length, block_count,
                    test_min_dur = 10, test_min_iter = 3, mem_profile = False):
+    r = random.Random(12345)
     counters = []
     for i in repeat_test(test_min_dur, test_min_iter):
-        r = random.Random(12345)
         with PerformanceCounter(mem_profile = mem_profile) as pc:
             for j in range(block_count):
                 t0 = r.random() * (total_length - block_length)
