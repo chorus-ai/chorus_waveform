@@ -811,7 +811,7 @@ class BaseDICOMFormat(BaseFormat):
 # dicom value types are constrained by IOD type
 # https://dicom.nema.org/medical/dicom/current/output/chtml/part03/PS3.3.html
 
-    def open(self, path: str, signal_names: list):
+    def open_waveforms(self, path: str, signal_names: list):
         
         signal_set = set(signal_names)
         signal_set = {name.upper() : name for name in signal_set}
@@ -1032,7 +1032,7 @@ class BaseDICOMFormat(BaseFormat):
 
 
     
-    def close(self, opened_files: dict):
+    def close_waveforms(self, opened_files: dict):
         for file_name, finfo in opened_files.items():
 
             finfo['fobj'].close()

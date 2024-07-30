@@ -26,7 +26,7 @@ class BaseFormat(abc.ABC):
         raise NotImplementedError
     
     @abc.abstractmethod
-    def open(self, path: str, signal_names: list):
+    def open_waveforms(self, path: str, signal_names: list):
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -35,13 +35,13 @@ class BaseFormat(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def close(self, opened_files: dict):
+    def close_waveforms(self, opened_files: dict):
         raise NotImplementedError
       
       
     def open_read_close_waveforms(self, path, start_time, end_time, signal_names):
-        opened_files = self.open(path, signal_names)
+        opened_files = self.open_waveforms(path, signal_names)
         output = self.read_opened_waveforms(opened_files, start_time, end_time, signal_names)
-        self.close(opened_files)
+        self.close_waveforms(opened_files)
         
         return output

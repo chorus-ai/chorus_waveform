@@ -97,7 +97,7 @@ class Parquet(BaseFormat):
 
         return results
 
-    def open(self, path: str, signal_names: list):
+    def open_waveforms(self, path: str, signal_names: list):
         output = {}
         for signal_name in signal_names:
             filepath = f"{path}_{signal_name}.parquet"
@@ -161,7 +161,7 @@ class Parquet(BaseFormat):
 
         return results
 
-    def close(self, open_files:dict):
+    def close_waveforms(self, open_files:dict):
         open_files.clear()
 
 

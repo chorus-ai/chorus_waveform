@@ -53,7 +53,7 @@ class NPY(BaseFormat):
         return results
     
 
-    def open(self, path: str, signal_names: list):
+    def open_waveforms(self, path: str, signal_names: list):
         output = {}
         for signal_name in signal_names:
             if self.fmt == 'Compressed':
@@ -84,7 +84,7 @@ class NPY(BaseFormat):
 
         return results
 
-    def close(self, opened_files: dict):
+    def close_waveforms(self, opened_files: dict):
         opened_files.clear()
 
 class NPY_Compressed(NPY):
