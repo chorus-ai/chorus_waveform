@@ -97,6 +97,74 @@ class Parquet(BaseFormat):
 
         return results
 
+    def open(self, path: str, signal_names: list):
+        output = {}
+        for signal_name in signal_names:
+            filepath = f"{path}_{signal_name}.parquet"
+            
+            try:
+                parquet_file = pq.ParquetFile(filepath)
+                metadata = parquet_file.metadata.metadata
+                samples_per_second = float(metadata[b'samples_per_second'].decode())
+                
+                # Calculate row groups to read
+                row_group_samples = int(samples_per_second * ROW_GROUP_SIZE_IN_SECONDS)
+
+                output[signal_name] = {'file': parquet_file, 'metadata': metadata, 'frequency': samples_per_second, 'row_group_samples': row_group_samples}
+                
+            except FileNotFoundError:
+                print(f"File not found: {filepath}")
+                output[signal_name] = None
+            except Exception as e:
+                print(f"Error processing {signal_name}: {e}")
+                output[signal_name] = None
+
+        return output
+
+    def read_opened_waveforms(self, open_files:dict, start_time: float, end_time: float,
+                             signal_names: list):
+
+        results = {}
+        for signal_name in signal_names:
+            if open_files[signal_name] is None:
+                results[signal_name] = np.array([])
+                continue
+            
+            parquet_file = open_files[signal_name]['file']
+            metadata = open_files[signal_name]['metadata']
+            samples_per_second = open_files[signal_name]['frequency']
+            row_group_samples = open_files[signal_name]['row_group_samples']
+
+            # Calculate the exact row groups to read
+            start_rg_index = round(start_time * samples_per_second) // row_group_samples
+            end_rg_index = round(end_time * samples_per_second) // row_group_samples
+
+            # Initialize an empty array for samples
+            samples_list = []
+
+            # Directly access each required row group
+            for rg_index in range(start_rg_index, end_rg_index + 1):
+                # Check to avoid reading beyond available row groups
+                if rg_index < parquet_file.num_row_groups:
+                    row_group = parquet_file.read_row_group(rg_index, columns=[signal_name])
+                    samples_list.append(row_group.column(0).to_numpy())
+
+            # Combine arrays from the list
+            samples = np.concatenate(samples_list) if samples_list else np.array([])
+
+            # Calculate sample offsets within the concatenated array
+            start_sample_offset = round(start_time * samples_per_second) % row_group_samples
+            end_sample_offset = start_sample_offset + round((end_time - start_time) * samples_per_second)
+
+            # Slice the samples array to match the exact requested range
+            results[signal_name] = samples[start_sample_offset:end_sample_offset]
+
+        return results
+
+    def close(self, open_files:dict):
+        open_files.clear()
+
+
 class Parquet_Compressed(Parquet):
     fmt = 'Compressed'
 
