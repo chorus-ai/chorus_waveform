@@ -59,12 +59,12 @@ def _run_read_test(fmt, path, total_length, all_channels, block_length, block_co
 # parameters are in case they can be used for optimization.
 def __open(fmt, path, total_length, channels, block_length, block_count):
     reader = fmt()
-    opened = reader.open(path, channels)
+    opened = reader.open_waveforms(path, channels)
     
     return (reader, opened)
 
 def __close(reader, opened):
-    reader.close(opened)
+    reader.close_waveforms(opened)
     
 def __read_rand_channel(reader, opened, total_length, channels, block_length, block_count, rng, rand_channel:bool = False):
     # TODO  test: 
