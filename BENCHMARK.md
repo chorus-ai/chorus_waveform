@@ -169,6 +169,38 @@ After loading the record written by `write_waveforms()`, you will need to return
 
 Again, [`pickle.py`](./waveform_benchmark/formats/pickle.py) provides a simple example.
 
-#### 6. Add your new format to the GitHub repository
+
+#### 6. Add an `open_waveforms()` method.
+
+This method is used for testing the read performance when a record written by `write_waveforms()` is opened once and multiple reads are performed against it. The method takes two arguments, `path`, `signal_names`.  Please see `read_waveforms()` for argument documentation in section 5.
+
+The function should return `opened_files`, a `dict`. The exact keys and values included in the dict is DEFINED BY THE IMPLEMENTOR.  An example may be `filename` to file object (from `open(filename)`) mapping.  The output is directly used as argument by the `read_opened_waveforms` function.  Note that other types of data may be tsored in `open_files` including metadata and even the full signals, although such approach will increase memory utilization which will also be benchmarked.
+
+  - `opened_files.keys()` -> `dict_keys(['file1', 'file2'])`
+  - `opened_files['file1']` -> `<_io.BufferedReader name='./wavetest-h5y7dasl/wavetest/WV000001'>`
+
+Again, [`pickle.py`](./waveform_benchmark/formats/pickle.py) provides a simple example.
+
+
+#### 7. Add a `read_opened_waveforms()` method.
+
+This method reads the record written by `write_waveforms()` that has been opened using the `open` function. The method takes four arguments, `opened_files`, `start_time`, `end_time`, `signal_names`.   The last three arguments have the same definition as for `read_waveforms()`; please refer to section 5.
+
+  - `opened_files` (`dict`) is the dictionary objects that holds the relevant internal states and variables produced by your `open_waveforms()` method.  
+  Caching such data reduces overheads for repeated, consecutive read operations.
+
+The function has the same `dict` return type as the `read_waveforms()` function; please refer to section 5 for details.
+
+Again, [`pickle.py`](./waveform_benchmark/formats/pickle.py) provides a simple example.
+
+#### 8. Add a `close_waveforms()` method.
+
+This method closes and clean up any open files, internal states, and variables produced by `open_waveforms()`. The method takes a single arguments, `opened_files`.   Please see section 7 `read_opened_waveforms()` for argument description.
+
+Again, [`pickle.py`](./waveform_benchmark/formats/pickle.py) provides a simple example.
+
+
+
+#### 9. Add your new format to the GitHub repository
 
 Once you have created your new module, you should contribute it to the [GitHub repository](https://github.com/chorus-ai/chorus_waveform/) by opening a pull request.
