@@ -434,41 +434,6 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
             
         if not test_only:
             print('_' * 64)
-            print('Read performance (median of N trials):')
-            print_header(mem_profile=mem_profile, with_ops=False)
-                
-            for block_length, block_count in TEST_BLOCK_LENGTHS:
-                
-                # time1 = time.time()
-                counters, mem_usages = _run_read_test(fmt, path, total_length, all_channels, block_length, block_count, test_min_dur = TEST_MIN_DURATION, test_min_iter = TEST_MIN_ITERATIONS, test1 = False, mem_profile = mem_profile)
-                # walltime = time.time() - time1
-                
-                print_results("", "all channels", counters, mem_usages, block_count, block_length, mem_profile = mem_profile)
-                
-                if format_list is not None:
-                    # Append read time result
-                    format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
-                                                                                    f'{block_count}_all',
-                                                                                    median_attr(counters, 'cpu_seconds'),
-                                                                                    format_list,
-                                                                                    waveform_list, test_list,
-                                                                                    result_list)
-
-            for block_length, block_count in TEST_BLOCK_LENGTHS:
-                counters, mem_usages = _run_read_test(fmt, path, total_length, all_channels, block_length, block_count, test_min_dur = TEST_MIN_DURATION, test_min_iter = TEST_MIN_ITERATIONS, test1=True, mem_profile = mem_profile)
-                # walltime = time.time() - time1
-                
-                print_results("", "one channel", counters, mem_usages, block_count, block_length, mem_profile = mem_profile)
-                
-                if format_list:
-                    format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
-                                                                                    f'{block_count}_one',
-                                                                                    median_attr(counters, 'cpu_seconds'),
-                                                                                    format_list,
-                                                                                    waveform_list, test_list,
-                                                                                    result_list)
-
-            print('_' * 64)
             print('Open Once Read Many performance (median of N trials):')
             print_header(mem_profile=mem_profile, with_ops=True)
                 
@@ -586,6 +551,41 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                     format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
                                                                                     f'{block_count}_one_close_fixed',
                                                                                     median_attr(close_counters, 'cpu_seconds'),
+                                                                                    format_list,
+                                                                                    waveform_list, test_list,
+                                                                                    result_list)
+
+            print('_' * 64)
+            print('Read performance (median of N trials):')
+            print_header(mem_profile=mem_profile, with_ops=False)
+                
+            for block_length, block_count in TEST_BLOCK_LENGTHS:
+                
+                # time1 = time.time()
+                counters, mem_usages = _run_read_test(fmt, path, total_length, all_channels, block_length, block_count, test_min_dur = TEST_MIN_DURATION, test_min_iter = TEST_MIN_ITERATIONS, test1 = False, mem_profile = mem_profile)
+                # walltime = time.time() - time1
+                
+                print_results("", "all channels", counters, mem_usages, block_count, block_length, mem_profile = mem_profile)
+                
+                if format_list is not None:
+                    # Append read time result
+                    format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
+                                                                                    f'{block_count}_all',
+                                                                                    median_attr(counters, 'cpu_seconds'),
+                                                                                    format_list,
+                                                                                    waveform_list, test_list,
+                                                                                    result_list)
+
+            for block_length, block_count in TEST_BLOCK_LENGTHS:
+                counters, mem_usages = _run_read_test(fmt, path, total_length, all_channels, block_length, block_count, test_min_dur = TEST_MIN_DURATION, test_min_iter = TEST_MIN_ITERATIONS, test1=True, mem_profile = mem_profile)
+                # walltime = time.time() - time1
+                
+                print_results("", "one channel", counters, mem_usages, block_count, block_length, mem_profile = mem_profile)
+                
+                if format_list:
+                    format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
+                                                                                    f'{block_count}_one',
+                                                                                    median_attr(counters, 'cpu_seconds'),
                                                                                     format_list,
                                                                                     waveform_list, test_list,
                                                                                     result_list)
