@@ -10,9 +10,10 @@ import math
 from datetime import datetime
 
 import warnings
-# warnings.filterwarnings("error")
 
 from waveform_benchmark.formats.base import BaseFormat
+
+# dicom3tools currently does NOT validate the IODs for waveform.  IT does validate the referencedSOPClassUIDInFile in DICOMDIR file.
 
 # types of waveforms and constraints:  
 #   https://dicom.nema.org/medical/dicom/current/output/chtml/part03/PS3.3.html
@@ -71,6 +72,8 @@ from waveform_benchmark.formats.base import BaseFormat
 # TODO: [x] extract with random access
 # TODO: [x] merge chunks
 
+# NOTE: float32 IEEE standard represents values like -2147483600.0 as -2147483648.0.
+#       not an issue for 8bit and 16bit output, for 32bit, use double (64bit) that works.
 
 # Value Representation Formats. base class
 class DICOMWaveformVR:
@@ -80,20 +83,23 @@ class DICOMWaveformVR:
 class DICOMWaveform8(DICOMWaveformVR):
     WaveformBitsAllocated = 8
     WaveformSampleInterpretation = "SB"
-    PaddingValue = int(-128)
-    PythonDatatype = np.int8
+    FileDatatype = np.int8
+    FloatDataType = np.float32
+    PaddingValue = np.iinfo(FileDatatype).min
                
 class DICOMWaveform16(DICOMWaveformVR):
     WaveformBitsAllocated = 16
     WaveformSampleInterpretation = "SS"
-    PaddingValue = int(-32768)
-    PythonDatatype = np.int16
+    FileDatatype = np.int16
+    FloatDataType = np.float32
+    PaddingValue = np.iinfo(FileDatatype).min
     
 class DICOMWaveform32(DICOMWaveformVR):
     WaveformBitsAllocated = 32
     WaveformSampleInterpretation = "SL"
-    PaddingValue = int(-2147483648)
-    PythonDatatype = np.int32
+    FileDatatype = np.int32
+    FloatDataType = np.float64
+    PaddingValue = np.iinfo(FileDatatype).min
 
 
 # relevant definitions:
@@ -131,7 +137,7 @@ class DICOMWaveformIOD:
 
     
 class TwelveLeadECGWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
+    def __init__(self, bits: int = 16, num_channels: int = None):
         pass
         
     VR = DICOMWaveform16
@@ -156,8 +162,8 @@ class TwelveLeadECGWaveform(DICOMWaveformIOD):
     
 # 4 groups, 1 to 24 channels each. unknown sample count limit., f in 200-1000
 class GeneralECGWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
-        if hifi:
+    def __init__(self, bits: int = 16, num_channels: int = None):
+        if bits > 16:
             self.VR = DICOMWaveform32
             self.storage_uid = '1.2.840.10008.5.1.4.1.1.9.1.4'
         else:
@@ -184,7 +190,7 @@ class GeneralECGWaveform(DICOMWaveformIOD):
     
 
 class AmbulatoryECGWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
+    def __init__(self, bits : int = 16, num_channels: int = None):
         pass
         
     # 8bit allowed, but gain may be too high for 8 bit
@@ -196,7 +202,7 @@ class AmbulatoryECGWaveform(DICOMWaveformIOD):
     }
 
 class CardiacElectrophysiologyWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
+    def __init__(self, bits : int = 16, num_channels: int = None):
         pass
     
     VR = DICOMWaveform16
@@ -208,7 +214,7 @@ class CardiacElectrophysiologyWaveform(DICOMWaveformIOD):
 
 # max 4 sequences, up to 8 channels each, num of samples limited by waveform maxsize. f < 400,
 class HemodynamicWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
+    def __init__(self, bits : int = 16, num_channels: int = None):
         pass
     
     VR = DICOMWaveform16
@@ -230,8 +236,8 @@ class HemodynamicWaveform(DICOMWaveformIOD):
     
 # max 1 sequence, 1 wave each. unknown sample count limit. f < 600.
 class ArterialPulseWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
-        # if hifi:
+    def __init__(self, bits : int = 16, num_channels: int = None):
+        # if bits > 8:
         #     self.VR = DICOMWaveform16
         # else:
         #     self.VR = DICOMWaveform8
@@ -251,22 +257,22 @@ class ArterialPulseWaveform(DICOMWaveformIOD):
     
 # different IOD for multiple channels.  1 multplex group, 1 channel each. unknown sample count limit. f < 100.
 class RespiratoryWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
+    def __init__(self, bits : int = 16, num_channels: int = None):
         if num_channels <= 1:
-            # if hifi:
+            # if bits > 8:
             #     self.VR = DICOMWaveform16
             # else:
             #     self.VR = DICOMWaveform8
             # 8bit allowed, but gain may be too high for 8 bit
             self.VR = DICOMWaveform16
-            storage_uid = uid.RespiratoryWaveformStorage
+            self.storage_uid = uid.RespiratoryWaveformStorage
         elif num_channels > 1:
-            if hifi:
+            if bits > 16:
                 self.VR = DICOMWaveform32
             else:
                 self.VR = DICOMWaveform16
-            storage_uid = uid.MultichannelRespiratoryWaveformStorage
-                    
+            self.storage_uid = uid.MultichannelRespiratoryWaveformStorage
+                                        
     modality = 'RESP'
     channel_coding = {
         'RESP': {'group': 1, 'scheme': 'SCPECG', 'value': '5.6.3-9-01', 'meaning': 'Respiration'},
@@ -278,8 +284,8 @@ class RespiratoryWaveform(DICOMWaveformIOD):
     }
         
 class RoutineScalpEEGWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
-        if hifi:
+    def __init__(self, bits : int = 16, num_channels: int = None):
+        if bits > 16:
             self.VR = DICOMWaveform32
         else:
             self.VR = DICOMWaveform16
@@ -292,8 +298,8 @@ class RoutineScalpEEGWaveform(DICOMWaveformIOD):
 
 # unlimited number of multiplex groups, up to 64 channels each.  sample size and f unconstrained.
 class SleepEEGWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
-        if hifi:
+    def __init__(self, bits : int = 16, num_channels: int = None):
+        if bits > 16:
             self.VR = DICOMWaveform32
         else:
             self.VR = DICOMWaveform16
@@ -312,8 +318,8 @@ class SleepEEGWaveform(DICOMWaveformIOD):
     
 #unlimited multiplex groups, up to 64 channels each.  sample size and f unconstrained.
 class ElectromyogramWaveform(DICOMWaveformIOD):
-    def __init__(self, hifi: bool = False, num_channels: int = None):
-        if hifi:
+    def __init__(self, bits : int = 16, num_channels: int = None):
+        if bits > 16:
             self.VR = DICOMWaveform32
         else:
             self.VR = DICOMWaveform16
@@ -448,7 +454,6 @@ class DICOMWaveformWriter:
     
     
     # channel_chunks is a list of tuples (channel, chunk).
-    # 
     def create_multiplexed_chunk(self, waveforms: dict, 
                                  iod: DICOMWaveformIOD, 
                                  group: int,
@@ -476,12 +481,11 @@ class DICOMWaveformWriter:
         
         unprocessed_chunks = []
         channels = {}
+        mins = {}
+        maxs = {}
+        gains = {}
         i = 0
         for (channel, chunkid) in channel_chunk:
-            # assign ids for each channel
-            if channel not in channels.keys():
-                channels[channel] = i
-                i += 1
             
             # use samples - the sample ids are about same as time * freq
             c_start = waveforms[channel]['chunks'][chunkid]['start_sample']
@@ -495,7 +499,39 @@ class DICOMWaveformWriter:
             
             duration = et - st
                         
+            # only process if there is finite data.        
+            temp_data = waveforms[channel]['chunks'][chunkid]['samples'][channel_start:channel_start+duration]
+            if (temp_data is None) or (len(temp_data) == 0):
+                continue
+            # in case it's all nans or infs
+            all_nan = (not np.any(np.isfinite(temp_data)))
+
+            # assign ids for each channel
+            if channel not in channels.keys():
+                channels[channel] = i
+                mins[channel] = []
+                maxs[channel] = []
+                gains[channel] = []
+                i += 1
+
+            mins[channel].append(0 if all_nan else np.fmin.reduce(temp_data))
+            maxs[channel].append(0 if all_nan else np.fmax.reduce(temp_data))
+            gains[channel].append(waveforms[channel]['chunks'][chunkid]['gain'])
             unprocessed_chunks.append((channel, chunkid, channel_start, target_start, target_start + duration))
+
+        if len(channels) == 0:
+            return None
+
+        for c in channels.keys():
+            mins[c] = np.fmin.reduce(mins[c])
+            maxs[c] = np.fmax.reduce(maxs[c])
+            gains[c] = list(set(gains[c]))
+            if len(gains[c]) > 1:
+                print("ERROR Channel " + c + " has multiple gains ")
+                for g in gains[c]:
+                    print("gain: " + str(g))    
+                raise ValueError("Channel has multiple gains ")
+            gains[c] = gains[c][0]
             
         # create a new multiplex group
         
@@ -522,9 +558,12 @@ class DICOMWaveformWriter:
         channeldefs = {}
         samples = np.full(shape = (len(channels.keys()), chunk_max_len), 
                           fill_value = iod.VR.PaddingValue,
-                          dtype=iod.VR.PythonDatatype)
+                          dtype=iod.VR.FileDatatype)
         # now collect the chunks into an array, generate the multiplex group, and increment the chunk ids.
         unprocessed_chunks.sort(key=lambda x: (x[0], x[3], x[4])) # ordered by channel
+        
+        float_type = iod.VR.FloatDataType
+
         for channel, chunk_id, start_src, start_target, end_target in unprocessed_chunks: 
             
             chunk = waveforms[channel]['chunks'][chunk_id]
@@ -534,33 +573,100 @@ class DICOMWaveformWriter:
             # print("channel start ", start_src, end_src, start_target, end_target, duration)
             
             # QUANTIZE: and pad missing data
-            # values is in original type.  nan replaced with PaddingValue then will be multiplied by gain, so divide here to avoid overflow.
-            # values = np.nan_to_num(np.frombuffer(chunk['samples'][start_src:end_src], dtype=np.dtype(chunk['samples'].dtype)), 
-            #                        nan = float(iod.VR.PaddingValue) / float(chunk['gain']) )
-            v = np.frombuffer(chunk['samples'][start_src:end_src], dtype=np.dtype(chunk['samples'].dtype))
-            gain = float(chunk['gain'])
-            values = np.where(np.isnan(v), float(iod.VR.PaddingValue), v * gain)
-
-
-            chan_id = channels[channel]
-            # write out in integer format
-            # samples[chan_id][start_target:end_target] = np.round(values * float(chunk['gain']), decimals=0).astype(iod.VR.PythonDatatype)
-            samples[chan_id][start_target:end_target] = np.round(values, decimals=0).astype(iod.VR.PythonDatatype)
-            # print("chunk shape:", chunk['samples'].shape)
-            # print("values shape: ", values.shape)
-            # print("samples shape: ", samples.shape)
             
-        # interleave the samples
-        samplesT = np.transpose(samples)
-        # print(channel_chunk)
-        # print("output shape", samplesT.shape)
+            ## input type
+            #   input is same as "nominal" in dicom parlance.
+            #   baseline = gain * (max + min) / 2
+            #   digital values are the binary stored data.  digital values = input * gain - baseline. this appears to be by convention.
+            #   
+            ## per dicom standard.   
+            #   channelSensitivity is defined to _include_ both gain and adc resolution.  but probably not "gain * adc resolution"
+            #   by standards definition, stored value * channelsensitivity = nominal value in unit specified (e.g. mV).  
+            #   this means sensitivity = 1/gain.
+            #   further: nominal value * sensitivity correction factor = calibrated value.
+            #   baseline:  offset of sample 0 vs actual 0, in nominal value unit. 
+            #
+            ## harmonizing: 
+            #   nominal == input
+            #   baseline = -(max + min)/2
+            #   sensitivity == gain
+            #   stored value (digital) = nominal * gain 
+            #   but may not have enough dynamic range in the stored values
+            #      rounding error of 0.5 can propagate with a low gain.
+            # scale further so we reach the dynamic range.
+            
+            # get the input values
+            v = np.frombuffer(chunk['samples'][start_src:end_src], dtype=np.dtype(chunk['samples'].dtype)).astype(float_type)
+            
+            # vmin, vmax, gain = minmax[channel]
+            vmin = float_type(mins[channel])
+            vmax = float_type(maxs[channel])
+            gain = float_type(gains[channel])
+            
+            # print(str(vmin) + "," + str(vmax) + "," + str(gain))
+            baseline = (vmin + vmax) * float_type(-0.5)
+            
+            vg_min = (vmin + baseline ) * gain
+            vg_max = (vmax + baseline ) * gain
+            vg_mag = np.fmax.reduce([np.abs(vg_min), np.abs(vg_max)])
+            # need to leave some room for rounding
+            dt_mag = float_type(np.fmin.reduce([np.abs(iod.VR.PaddingValue + 1), np.abs(np.iinfo(iod.VR.FileDatatype).max)]) - 1)
+            
+            # if np.isnan(vmin) or np.isnan(vmax):
+            #     print(v)
+            #     print("min ", vmin, " max ", vmax, " size ", len(v), " num of nans ", np.sum(np.isnan(v)))
+            #     print(np.sum(np.isnan(chunk['samples'][start_src:end_src])))
+            #     print(channel_chunk)
+            #     print("start ", start_src, " end ", end_src)
+            
+            scale = float_type(1.0)
+            if (vg_mag != 0) and (dt_mag != 0):
+                scale *= (dt_mag / vg_mag)
+            
+            chan_id = channels[channel]
+            y = np.round((v + baseline) * gain * scale, decimals=0)
+            # print("min and max " + str(np.fmin.reduce(y)) + "," + str(np.fmax.reduce(y)) + " val max = " + str(float_type(np.iinfo(iod.VR.FileDatatype).max)) + " val min = " + str(float_type(iod.VR.PaddingValue)))
+            # if np.any(y > float_type(np.iinfo(iod.VR.FileDatatype).max)):
+            #     print("WARNING of max " + channel + "," + str(chunk_id) + " max " + str(float_type(np.iinfo(iod.VR.FileDatatype).max)) + " actual " + str(y[y >= float_type(np.iinfo(iod.VR.FileDatatype).max)][0]))
+            # if np.any(y < float_type(iod.VR.PaddingValue)):
+            #     print("WARNING of < min " + channel + "," + str(chunk_id) + " min " + str(float_type(np.iinfo(iod.VR.FileDatatype).min)) + " actual " + str(y[y < iod.VR.PaddingValue][0]))
+            # if np.any(y == float_type(iod.VR.PaddingValue)):
+            #     min_vals = list(set(y[np.where(y == iod.VR.PaddingValue)]))
+            #     min_val = min_vals[0]
+            #     print("WARNING chann " + channel + " of == min " + channel + "," + str(chunk_id) + " min " + str(float_type(np.iinfo(iod.VR.FileDatatype).min)) + " actual " + str(min_val) + " actual cast to float " + str(np.float32(min_val)))
+            #     print("    ," + str(min_val*1.0) + "," + str(float_type(min_val)) + "," + str(min_val) + ", " + str(np.float32(min_val)))
+            
+            x = np.where(np.isnan(y), float_type(iod.VR.PaddingValue), y)
+            # if np.any(np.isnan(x)):
+            #     print("NOTE nan encountered after np.where " + str(iod.VR.PaddingValue) + " baseline " + str(baseline) + " gain " + str(gain) + " scale " + str(scale))
+            # if np.any(np.isinf(x)):
+            #     print("NOTE inf encountered after np.where " + str(iod.VR.PaddingValue) + " baseline " + str(baseline) + " gain " + str(gain) + " scale " + str(scale))
+            # if not np.all(np.isfinite(x)):
+            #     print("NOTE non-finite encountered " + channel + " after np.where " + str(float_type(iod.VR.PaddingValue)) + " baseline " + str(baseline) + " gain " + str(gain) + " scale " + str(scale))
+                
+            samples[chan_id][start_target:end_target] = x.astype(iod.VR.FileDatatype)
         
-        
-        for (channel, chunk_id) in channel_chunk:
+        for channel in channels.keys():
             if channel in channeldefs.keys():
                 continue
                 
-            chunk = waveforms[channel]['chunks'][chunk_id]        
+            # recompute the gain, sensitivity, scale, etc for each channel
+            vmin = float_type(mins[channel])
+            vmax = float_type(maxs[channel])
+            gain = float_type(gains[channel])
+                        
+            baseline = (vmin + vmax) * float_type(-0.5)
+            vg_min = (vmin + baseline ) * gain
+            vg_max = (vmax + baseline ) * gain
+            vg_mag = np.fmax.reduce([np.abs(vg_min), np.abs(vg_max)])
+            # need to leave some room for rounding
+            dt_mag = float_type(np.fmin.reduce([np.abs(iod.VR.PaddingValue+ 1), np.abs(np.iinfo(iod.VR.FileDatatype).max)]) - 1)
+            # print(channel + "," + str(chunk_id) + " vg_min = " + str(vg_min) + " vg_max = " + str(vg_max) + " baseline = " + str(baseline) + " gain = " + str(gain) + " min = " + str(vmin) + " max = " + str(vmax))
+            
+            scale = float_type(1.0)
+            if (vg_mag != 0) and (dt_mag != 0):
+                scale *= (dt_mag / vg_mag)
+            
             unit = waveforms[channel]['units']
                 
             # create the channel
@@ -578,8 +684,12 @@ class DICOMWaveformWriter:
             source.CodingSchemeDesignator = iod.channel_coding[channel.upper()]['scheme']
             source.CodingSchemeVersion = "unknown"
             source.CodeMeaning = channel
-                
-            chdef.ChannelSensitivity = 1.0
+            
+            sens = float_type(1.0) / gain
+            sensitivity = str(sens)
+            if (len(sensitivity) > 16):
+                sensitivity = str(np.round(sens, decimals=14))
+            chdef.ChannelSensitivity = sensitivity if len(sensitivity) <= 16 else sensitivity[:16]   # gain and ADC resolution goes here
             chdef.ChannelSensitivityUnitsSequence = [Dataset()]
             units = chdef.ChannelSensitivityUnitsSequence[0]
                 
@@ -590,24 +700,38 @@ class DICOMWaveformWriter:
             units.CodeMeaning = UCUM_ENCODING[unit]  # this needs to be fixed.
                 
             # multiplier to apply to the encoded value to get back the orginal input.
-            ds = str(float(1.0) / float(chunk['gain']))
-            chdef.ChannelSensitivityCorrectionFactor = ds if len(ds) <= 16 else ds[:16]
-            chdef.ChannelBaseline = '0'
+            corr = float_type(1.0) / scale
+            correction = str(corr)
+            if (len(correction) > 16):
+                correction = str(np.round(corr, decimals=14))
+            chdef.ChannelSensitivityCorrectionFactor = correction if len(correction) <= 16 else correction[:16]   # gain and ADC resolution goes here
+            
+            baseln = str(baseline)
+            if (len(baseln) > 16):
+                if (baseline >= 0.0):
+                    baseln = str(np.round(baseline, decimals=14))
+                else:
+                    baseln = str(np.round(baseline, decimals=13))
+            chdef.ChannelBaseline = baseln if len(baseln) <= 16 else baseln[:16]
+                        
             chdef.WaveformBitsStored = iod.VR.WaveformBitsAllocated
             # only for amplifier type of AC
             # chdef.FilterLowFrequency = '0.05'
             # chdef.FilterHighFrequency = '300'
-            channeldefs[channel] = chdef            
+            channeldefs[channel] = chdef
             
 
         wfDS.ChannelDefinitionSequence = channeldefs.values() 
         # actual bytes. arr is a numpy array of shape np.stack((ch1, ch2,...), axis=1)
         # arr = np.stack([ samples[channel] for channel in channel_chunk.keys()], axis=1)
-        wfDS.WaveformData = samplesT.tobytes()
+        
+        # interleave the samples
+        wfDS.WaveformData = np.transpose(samples).tobytes()
 
         return wfDS
 
     
+    # minmax is dictionary of channel to (min, max) values
     def add_waveform_chunks_multiplexed(self, dataset,
                                         iod: DICOMWaveformIOD,
                                         chunk_info: dict,
@@ -627,19 +751,23 @@ class DICOMWaveformWriter:
         unique_groups = set(channel_chunks.values())
         grouped_channels = { group: [ key for key, val in channel_chunks.items() if val == group ] for group in unique_groups }
         
+        seq_size = 0
         for group, chanchunks in grouped_channels.items():
             # input to this is [(channel, chunk), ... ]
-            multiplexGroupDS = self.create_multiplexed_chunk(waveforms, iod, group, chanchunks, 
+            multiplexGroupDS = self.create_multiplexed_chunk(waveforms, iod, group, chanchunks,
                                                             start_time=start_time, end_time=end_time)
-            dataset.WaveformSequence.append(multiplexGroupDS)        
+            if (multiplexGroupDS is not None):
+                dataset.WaveformSequence.append(multiplexGroupDS)
+                seq_size += 1
         
         # each unique frequency will have a different label for the multiplex group..  The multiplex group will 
         # have a separate instance contain the channels with the same frequency
         # each chunk will have channels with the same frequency (with same label).  Channels for each multiplex group
         # will have the same start and end time/ sample ids.
-        
-        return dataset
-
+        if (seq_size > 0):
+            return dataset
+        else:
+            return None
     
 
 # dicom value types are constrained by IOD type
