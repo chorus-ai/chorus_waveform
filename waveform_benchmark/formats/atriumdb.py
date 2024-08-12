@@ -1,6 +1,6 @@
 import bisect
 from pathlib import Path
-import json
+import pickle
 
 import numpy as np
 from waveform_benchmark.formats.base import BaseFormat
@@ -27,10 +27,8 @@ class AtriumDB(BaseFormat):
         sdk.get_device_info(chorus_device_id)
 
         # Convert each channel into an array with no gaps.
-        # For example: waveforms['V5'] -> {'units': 'mV', 'samples_per_second': 360, 'chunks': [{'start_time': 0.0, 'end_time': 1805.5555555555557, 'start_sample': 0, 'end_sample': 650000, 'gain': 200.0, 'samples': array([-0.065, -0.065, -0.065, ..., -0.365, -0.335,  0.   ], dtype=float32)}]}
         for name, waveform in waveforms.items():
             freq_hz = waveform['samples_per_second']
-            # sdk.block.block_size = int(freq_hz * 5)  # Dynamic block size, 5 seconds per block
             freq_nhz = round(freq_hz * (10 ** 9))
             period_ns = (10 ** 18) // freq_nhz
             measure_id = sdk.insert_measure(measure_tag=name, freq=freq_hz, freq_units="Hz")
@@ -95,7 +93,7 @@ class AtriumDB(BaseFormat):
             # Save header information to file
             meta_dir = Path(path) / "meta"
             meta_dir.mkdir(parents=True, exist_ok=True)
-            header_filename = meta_dir / f"{measure_id}_{chorus_device_id}.json"
+            header_filename = meta_dir / f"{measure_id}_{chorus_device_id}.pkl"
             header_data = {
                 "block_list": block_list,
                 "block_start_list": block_start_list,
@@ -103,8 +101,8 @@ class AtriumDB(BaseFormat):
                 "file_id": file_id,
                 "filename": filename
             }
-            with open(header_filename, 'w') as f:
-                json.dump(header_data, f)
+            with open(header_filename, 'wb') as f:
+                pickle.dump(header_data, f)
 
     def read_waveforms(self, path, start_time, end_time, signal_names):
         assert sdk is not None, "SDK should have been initialized in writing phase"
@@ -191,13 +189,13 @@ def get_block_data(block_sdk, measure_id, device_id):
 
 def read_header_data(path, measure_id, device_id):
     meta_dir = Path(path) / "meta"
-    header_filename = meta_dir / f"{measure_id}_{device_id}.json"
+    header_filename = meta_dir / f"{measure_id}_{device_id}.pkl"
 
     if not header_filename.exists():
         return None
 
-    with open(header_filename, 'r') as f:
-        header_data = json.load(f)
+    with open(header_filename, 'rb') as f:
+        header_data = pickle.load(f)
 
     return header_data
 
