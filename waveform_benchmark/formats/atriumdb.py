@@ -1,4 +1,6 @@
 import bisect
+from pathlib import Path
+import json
 
 import numpy as np
 from waveform_benchmark.formats.base import BaseFormat
@@ -6,11 +8,6 @@ from waveform_benchmark.formats.base import BaseFormat
 from atriumdb import AtriumSDK
 
 sdk: AtriumSDK = None
-block_cache = None
-start_cache = None
-end_cache = None
-filename_dict = None
-
 
 class AtriumDB(BaseFormat):
     """
@@ -77,14 +74,32 @@ class AtriumDB(BaseFormat):
             if time_data.size == 0:
                 continue
 
-            sdk.write_data_easy(measure_id, chorus_device_id, time_data, value_data, freq_nhz,
-                                scale_m=scale_m, scale_b=scale_b)
+            _, _, _, filename = sdk.write_data(
+                measure_id, chorus_device_id, time_data, value_data, freq_nhz, int(time_data[0]),
+                raw_time_type=1, raw_value_type=1, encoded_time_type=2, encoded_value_type=3,
+                scale_m=scale_m, scale_b=scale_b)
+
+            block_list, block_start_list, block_end_list = get_block_data(sdk, measure_id, chorus_device_id)
+            if len(block_list) == 0:
+                raise ValueError("Cannot save header information, no blocks were written")
+            file_id = block_list[0][3]
+
+            # Save header information to file
+            meta_dir = Path(path) / "meta"
+            meta_dir.mkdir(parents=True, exist_ok=True)
+            header_filename = meta_dir / f"{measure_id}_{chorus_device_id}.json"
+            header_data = {
+                "block_list": block_list,
+                "block_start_list": block_start_list,
+                "block_end_list": block_end_list,
+                "file_id": file_id,
+                "filename": filename
+            }
+            with open(header_filename, 'w') as f:
+                json.dump(header_data, f)
 
     def read_waveforms(self, path, start_time, end_time, signal_names):
         assert sdk is not None, "SDK should have been initialized in writing phase"
-        global block_cache, start_cache, end_cache, filename_dict
-        if block_cache is None:
-            block_cache, start_cache, end_cache, filename_dict = generate_block_cache(sdk)
 
         start_time_nano = int(start_time * (10 ** 9))
         end_time_nano = int(end_time * (10 ** 9))
@@ -96,10 +111,24 @@ class AtriumDB(BaseFormat):
         results = {}
         for signal_name in signal_names:
             new_measure_id, freq_nhz = measures[signal_name]
+            header_data = read_header_data(path, new_measure_id, new_device_id)
+            if header_data is None:
+                freq_hz = freq_nhz / (10 ** 9)
+                start_frame = round(start_time * freq_hz)
+                end_frame = round(end_time * freq_hz)
+                num_samples = end_frame - start_frame
+                nan_values = np.empty(num_samples, dtype=np.float32)
+                if num_samples > 0:
+                    nan_values[:] = np.nan
+                results[signal_name] = nan_values
+                continue
+
+            filename_dict = {header_data["file_id"]: header_data["filename"]}
 
             # Get blocks from cache
-            block_list = find_blocks(block_cache, start_cache, end_cache, new_measure_id, new_device_id,
-                                     start_time_nano, end_time_nano)
+            block_list = find_blocks(header_data["block_list"], header_data["block_start_list"],
+                                     header_data["block_end_list"], start_time_nano, end_time_nano)
+
             if len(block_list) == 0:
                 freq_hz = freq_nhz / (10 ** 9)
                 start_frame = round(start_time * freq_hz)
@@ -118,8 +147,9 @@ class AtriumDB(BaseFormat):
             num_bytes_list = [row[5] for row in block_list]
 
             # Decode the data and separate it into headers, times, and values
-            read_time_data, read_value_data, headers = sdk.block.decode_blocks(encoded_bytes, num_bytes_list, analog=True,
-                                                                  time_type=1)
+            read_time_data, read_value_data, headers = sdk.block.decode_blocks(encoded_bytes, num_bytes_list,
+                                                                               analog=True,
+                                                                               time_type=1)
 
             # Truncate unneeded values.
             left = np.searchsorted(read_time_data, start_time_nano, side='left')
@@ -131,49 +161,41 @@ class AtriumDB(BaseFormat):
         return results
 
 
-def generate_block_cache(cache_sdk):
-    b_cache, s_cache, e_cache = {}, {}, {}
+def get_block_data(block_sdk, measure_id, device_id):
     query = """
     SELECT id, measure_id, device_id, file_id, start_byte, num_bytes, start_time_n, end_time_n, num_values
     FROM block_index
+    WHERE measure_id = ? AND device_id = ?
     ORDER BY measure_id, device_id, start_time_n ASC;
     """
 
-    with cache_sdk.sql_handler.connection() as (conn, cursor):
-        cursor.execute(query, ())
+    with block_sdk.sql_handler.connection() as (conn, cursor):
+        cursor.execute(query, (measure_id, device_id))
         block_query_result = cursor.fetchall()
 
-    file_id_list = list(set([row[3] for row in block_query_result]))
-    filename_dict = cache_sdk.get_filename_dict(file_id_list)
+    block_start_list, block_end_list = [], []
     for block in block_query_result:
         block_id, measure_id, device_id, file_id, start_byte, num_bytes, start_time, end_time, num_values = block
-        if measure_id not in b_cache:
-            b_cache[measure_id] = {}
-            s_cache[measure_id] = {}
-            e_cache[measure_id] = {}
+        block_start_list.append(start_time)
+        block_end_list.append(end_time)
 
-        measure_cache = b_cache[measure_id]
-
-        if device_id not in measure_cache:
-            measure_cache[device_id] = []
-            s_cache[measure_id][device_id] = []
-            e_cache[measure_id][device_id] = []
-
-        measure_cache[device_id].append(block)
-        s_cache[measure_id][device_id].append(block[6])
-        e_cache[measure_id][device_id].append(block[7])
-
-    return b_cache, s_cache, e_cache, filename_dict
+    return block_query_result, block_start_list, block_end_list
 
 
-def find_blocks(b_cache, s_cache, e_cache, measure_id, device_id, start_time, end_time):
-    if measure_id not in b_cache or device_id not in b_cache[measure_id]:
-        return []
+def read_header_data(path, measure_id, device_id):
+    meta_dir = Path(path) / "meta"
+    header_filename = meta_dir / f"{measure_id}_{device_id}.json"
 
-    blocks = b_cache[measure_id][device_id]
-    starts = s_cache[measure_id][device_id]
-    ends = e_cache[measure_id][device_id]
+    if not header_filename.exists():
+        return None
 
+    with open(header_filename, 'r') as f:
+        header_data = json.load(f)
+
+    return header_data
+
+
+def find_blocks(blocks, starts, ends, start_time, end_time):
     start_idx = bisect.bisect_left(ends, start_time)
     end_idx = bisect.bisect_left(ends, end_time)
 
