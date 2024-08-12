@@ -74,9 +74,17 @@ class AtriumDB(BaseFormat):
             if time_data.size == 0:
                 continue
 
+            # Determine the raw and encoded value types based on the dtype of value_data
+            if np.issubdtype(value_data.dtype, np.integer):
+                raw_v_t = 1
+                encoded_v_t = 3
+            else:
+                raw_v_t = 2
+                encoded_v_t = 2
+
             _, _, _, filename = sdk.write_data(
                 measure_id, chorus_device_id, time_data, value_data, freq_nhz, int(time_data[0]),
-                raw_time_type=1, raw_value_type=1, encoded_time_type=2, encoded_value_type=3,
+                raw_time_type=1, raw_value_type=raw_v_t, encoded_time_type=2, encoded_value_type=encoded_v_t,
                 scale_m=scale_m, scale_b=scale_b)
 
             block_list, block_start_list, block_end_list = get_block_data(sdk, measure_id, chorus_device_id)
@@ -147,9 +155,8 @@ class AtriumDB(BaseFormat):
             num_bytes_list = [row[5] for row in block_list]
 
             # Decode the data and separate it into headers, times, and values
-            read_time_data, read_value_data, headers = sdk.block.decode_blocks(encoded_bytes, num_bytes_list,
-                                                                               analog=True,
-                                                                               time_type=1)
+            read_time_data, read_value_data, headers = sdk.block.decode_blocks(encoded_bytes, num_bytes_list, analog=True,
+                                                                  time_type=1)
 
             # Truncate unneeded values.
             left = np.searchsorted(read_time_data, start_time_nano, side='left')
