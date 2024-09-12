@@ -49,7 +49,7 @@ class Pickle(BaseFormat):
         return results
 
 
-    def open_waveforms(self, path: str, signal_names: list):
+    def open_waveforms(self, path: str, signal_names:list, **kwargs):
         with open(path, 'rb') as f:
             channels = pickle.load(f)
 

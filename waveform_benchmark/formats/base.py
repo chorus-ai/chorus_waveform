@@ -25,8 +25,10 @@ class BaseFormat(abc.ABC):
                        signal_names: list):
         raise NotImplementedError
     
+    # kwargs is a dictionary that can be used to pass additional arguments to the format
+    # replaces the total_length, block_length, and block_size params which are either test specific or intrinsic to the format.
     @abc.abstractmethod
-    def open_waveforms(self, path: str, signal_names: list):
+    def open_waveforms(self, path: str, signal_names:list, **kwargs):
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -39,8 +41,8 @@ class BaseFormat(abc.ABC):
         raise NotImplementedError
       
       
-    def open_read_close_waveforms(self, path, start_time, end_time, signal_names):
-        opened_files = self.open_waveforms(path, signal_names)
+    def open_read_close_waveforms(self, path, start_time, end_time, signal_names, **kwargs):
+        opened_files = self.open_waveforms(path, signal_names, **kwargs)
         output = self.read_opened_waveforms(opened_files, start_time, end_time, signal_names)
         self.close_waveforms(opened_files)
         

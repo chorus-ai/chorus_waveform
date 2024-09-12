@@ -811,7 +811,7 @@ class BaseDICOMFormat(BaseFormat):
 # dicom value types are constrained by IOD type
 # https://dicom.nema.org/medical/dicom/current/output/chtml/part03/PS3.3.html
 
-    def open_waveforms(self, path: str, signal_names: list):
+    def open_waveforms(self, path: str, signal_names:list, **kwargs):
         
         signal_set = set(signal_names)
         signal_set = {name.upper() : name for name in signal_set}

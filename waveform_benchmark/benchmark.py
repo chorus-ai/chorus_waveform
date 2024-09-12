@@ -48,7 +48,9 @@ def _run_read_test(fmt, path, total_length, all_channels, block_length, block_co
     for i in repeat_test(test_min_dur, test_min_iter):
         with PerformanceCounter(mem_profile = mem_profile) as pc:
             if (mem_profile):
-                mem_usage = memory_usage((__read, (fmt, path, total_length, all_channels, block_length, block_count, r), {"test1": test1}), include_children = True, max_usage = True)
+                mem_usage = memory_usage(
+                    (__read, (fmt, path, total_length, all_channels, block_length, block_count, r), {"test1": test1}),
+                    include_children = True, max_usage = True)
                 mem_usages.append(mem_usage)
             else:
                 __read(fmt, path, total_length, all_channels, block_length, block_count, r, test1=test1)
@@ -56,10 +58,10 @@ def _run_read_test(fmt, path, total_length, all_channels, block_length, block_co
     return counters, mem_usages
     
 
-# parameters are in case they can be used for optimization.
-def __open(fmt, path, total_length, channels, block_length, block_count):
+# kwargs parameters are for any additional parameters that might be useful for optimization.
+def __open(fmt, path, channels, **kwargs):
     reader = fmt()
-    opened = reader.open_waveforms(path, channels)
+    opened = reader.open_waveforms(path, channels, **kwargs)
     
     return (reader, opened)
 
@@ -100,10 +102,14 @@ def _run_read_test_opened_rand_channel(fmt, path, total_length, all_channels, bl
         # open
         with PerformanceCounter(mem_profile = mem_profile) as pc:
             if (mem_profile):
-                mem_usage, (reader, opened) = memory_usage((__open, (fmt, path, total_length, channels, block_length, block_count), {}), include_children = True, max_usage = True, retval = True)
+                mem_usage, (reader, opened) = memory_usage(
+                    (__open, (fmt, path, channels), 
+                     {'total_length': total_length, 'block_length': block_length, 'block_count': block_count}),
+                    include_children = True, max_usage = True, retval = True)
                 open_mem_usages.append(mem_usage)
             else:
-                (reader, opened) = __open(fmt, path, total_length, channels, block_length, block_count)
+                (reader, opened) = __open(fmt, path, channels, total_length = total_length, 
+                                          block_length = block_length, block_count = block_count)
         open_counters.append(pc)
 
         # read 
@@ -280,7 +286,8 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
         # time1 = time.time()
         with PerformanceCounter(mem_profile = mem_profile) as pc_write:
             if mem_profile:
-                mem_usage = memory_usage((fmt().write_waveforms, (path, waveforms), {}), include_children = True, max_usage = True)
+                mem_usage = memory_usage((fmt().write_waveforms, (path, waveforms), {}),
+                                         include_children = True, max_usage = True)
             else:
                 fmt().write_waveforms(path, waveforms)
         # wall_time = time.time() - time1
@@ -446,7 +453,8 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                                                         rand_channel = True, test1ch = False, mem_profile = mem_profile)
                 # walltime = time.time() - time1
                 
-                print_results("open  ", "all channels", open_counters, open_mem_usages, block_count, block_length, mem_profile = mem_profile)
+                print_results("open  ", "all channels", open_counters, open_mem_usages,
+                              block_count, block_length, mem_profile = mem_profile)
                 
                 if format_list is not None:
                     # Append open time result
@@ -457,7 +465,8 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                                                                                     waveform_list, test_list,
                                                                                     result_list)
                 
-                print_results("read  ", "all channels", read_counters, read_mem_usages, block_count, block_length, mem_profile = mem_profile)
+                print_results("read  ", "all channels", 
+                              read_counters, read_mem_usages, block_count, block_length, mem_profile = mem_profile)
 
                 if format_list is not None:
                     # Append read time result
@@ -468,7 +477,8 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                                                                                     waveform_list, test_list,
                                                                                     result_list)
                     
-                print_results("close ", "all channels", close_counters, close_mem_usages, block_count, block_length, mem_profile = mem_profile)
+                print_results("close ", "all channels", 
+                              close_counters, close_mem_usages, block_count, block_length, mem_profile = mem_profile)
 
                 if format_list is not None:
                     # Append close time result
@@ -484,7 +494,8 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                                                         test_min_dur = TEST_MIN_DURATION, test_min_iter = TEST_MIN_ITERATIONS, 
                                                         rand_channel = True, test1ch = True, mem_profile = mem_profile)
 
-                print_results("open  ", "rand channel", open_counters, open_mem_usages, block_count, block_length, mem_profile = mem_profile)
+                print_results("open  ", "rand channel", 
+                              open_counters, open_mem_usages, block_count, block_length, mem_profile = mem_profile)
 
                 if format_list:
                     format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
@@ -494,7 +505,8 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                                                                                     waveform_list, test_list,
                                                                                     result_list)
 
-                print_results("read  ", "rand channel", read_counters, read_mem_usages, block_count, block_length, mem_profile = mem_profile)
+                print_results("read  ", "rand channel", 
+                              read_counters, read_mem_usages, block_count, block_length, mem_profile = mem_profile)
                 if format_list:
                     format_list, waveform_list, test_list, result_list = append_result(format_class, input_record,
                                                                                     f'{block_count}_one_read_rand',
@@ -562,7 +574,11 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
             for block_length, block_count in TEST_BLOCK_LENGTHS:
                 
                 # time1 = time.time()
-                counters, mem_usages = _run_read_test(fmt, path, total_length, all_channels, block_length, block_count, test_min_dur = TEST_MIN_DURATION, test_min_iter = TEST_MIN_ITERATIONS, test1 = False, mem_profile = mem_profile)
+                counters, mem_usages = _run_read_test(fmt, path, total_length, all_channels, 
+                                                      block_length, block_count, 
+                                                      test_min_dur = TEST_MIN_DURATION, 
+                                                      test_min_iter = TEST_MIN_ITERATIONS, 
+                                                      test1 = False, mem_profile = mem_profile)
                 # walltime = time.time() - time1
                 
                 print_results("", "all channels", counters, mem_usages, block_count, block_length, mem_profile = mem_profile)
@@ -577,7 +593,11 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                                                                                     result_list)
 
             for block_length, block_count in TEST_BLOCK_LENGTHS:
-                counters, mem_usages = _run_read_test(fmt, path, total_length, all_channels, block_length, block_count, test_min_dur = TEST_MIN_DURATION, test_min_iter = TEST_MIN_ITERATIONS, test1=True, mem_profile = mem_profile)
+                counters, mem_usages = _run_read_test(fmt, path, total_length, all_channels, 
+                                                      block_length, block_count, 
+                                                      test_min_dur = TEST_MIN_DURATION, 
+                                                      test_min_iter = TEST_MIN_ITERATIONS, 
+                                                      test1=True, mem_profile = mem_profile)
                 # walltime = time.time() - time1
                 
                 print_results("", "one channel", counters, mem_usages, block_count, block_length, mem_profile = mem_profile)

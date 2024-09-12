@@ -53,7 +53,7 @@ class NPY(BaseFormat):
         return results
     
 
-    def open_waveforms(self, path: str, signal_names: list):
+    def open_waveforms(self, path: str, signal_names:list, **kwargs):
         output = {}
         for signal_name in signal_names:
             if self.fmt == 'Compressed':
