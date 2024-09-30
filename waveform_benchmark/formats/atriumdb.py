@@ -61,7 +61,8 @@ class AtriumDB(BaseFormat):
 
             # Check if all digital values are integers
             digital_values = (value_data * sig_gain) - sig_baseline
-            digital_values_are_all_ints = np.all(np.isclose(digital_values, np.round(digital_values)))
+            # digital_values_are_all_ints = np.all(np.isclose(digital_values, np.round(digital_values)))
+            digital_values_are_all_ints = True
 
             scale_m, scale_b = None, None
             if digital_values_are_all_ints:
