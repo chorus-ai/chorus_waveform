@@ -59,11 +59,9 @@ class BaseCCDEF(BaseFormat):
                     start = chunk['start_sample']
                     end = chunk['end_sample']
 
-                    cursamples = np.where(np.isnan(chunk['samples']),
-                                          (nanval*1.0)/max_gain,
-                                          chunk['samples'])
-
-                    sig_samples[start:end] = np.round(cursamples * max_gain + sig_baseline)
+                    sig_samples[start:end] = np.where(np.isnan(chunk['samples']),
+                                                    (nanval),
+                                                    np.round(chunk['samples'] * max_gain + sig_baseline))
 
                 if self.fmt == "Compressed":
                     f["Waveforms"].create_dataset(channel,
