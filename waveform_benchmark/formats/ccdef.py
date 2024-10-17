@@ -59,11 +59,9 @@ class BaseCCDEF(BaseFormat):
                     start = chunk['start_sample']
                     end = chunk['end_sample']
 
-                    cursamples = np.where(np.isnan(chunk['samples']),
-                                          (nanval*1.0)/max_gain,
-                                          chunk['samples'])
-
-                    sig_samples[start:end] = np.round(cursamples * max_gain + sig_baseline)
+                    sig_samples[start:end] = np.where(np.isnan(chunk['samples']),
+                                                    (nanval),
+                                                    np.round(chunk['samples'] * max_gain + sig_baseline))
 
                 if self.fmt == "Compressed":
                     f["Waveforms"].create_dataset(channel,
@@ -108,6 +106,48 @@ class BaseCCDEF(BaseFormat):
                 results[channel] = sig_data
 
         return results
+    
+    def open_waveforms(self, path: str, signal_names:list, **kwargs):
+        outputpath = path + ".hdf5"
+        results = {}
+
+        try:
+            f = h5py.File(outputpath, "r")
+            results["file"] = f
+        except FileNotFoundError:
+            print(f"File not found: {outputpath}")
+            results["file"] = None
+        except Exception as e:
+            print(f"Error processing {outputpath}: {e}")
+            results["file"] = None
+
+        return results
+
+    def read_opened_waveforms(self, opened_files: dict, start_time: float, end_time: float,
+                             signal_names: list):
+        f = opened_files["file"]
+        results = {}
+        for channel in signal_names:
+            sample_rate = f["Waveforms"][channel].attrs["sample_rate"]
+
+            # TODO: channelstarttime is unused. Remove it? 
+            # channelstarttime = f["Waveforms"][channel].attrs["start_time"]
+
+            start_frame = round((start_time) * sample_rate)
+            end_frame = round((end_time) * sample_rate)
+
+            sig_data = f["Waveforms"][channel][start_frame:end_frame] 
+            naninds = (sig_data == f["Waveforms"][channel].attrs["nanvalue"])
+            sig_gain = f["Waveforms"][channel].attrs["gain"]
+            sig_baseline = f["Waveforms"][channel].attrs["baseline"]
+            sig_data = (sig_data.astype(int) - sig_baseline) * 1.0 / sig_gain
+            sig_data[naninds] = np.nan
+            results[channel] = sig_data
+        return results
+
+    def close_waveforms(self, opened_files: dict):
+        opened_files["file"].close()
+        opened_files.clear()
 
 
 class CCDEF_Compressed(BaseCCDEF):
