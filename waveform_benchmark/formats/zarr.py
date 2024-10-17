@@ -11,21 +11,28 @@ class Zarr(BaseFormat):
     def write_waveforms(self, path, waveforms):
         # Initialize Zarr group
         root_group = zarr.open_group(path, mode='w')
+        nanval = -32768  # Sentinel value for NaN
 
         for name, waveform in waveforms.items():
             length = waveform['chunks'][-1]['end_sample']
             samples = np.empty(length, dtype=np.int16)
-            samples[:] = 0
+            samples[:] = nanval  
+
+            max_gain = max(chunk['gain'] for chunk in waveform['chunks'])  # Get max gain from the chunks
 
             for chunk in waveform['chunks']:
                 start = chunk['start_sample']
                 end = chunk['end_sample']
-                samples[start:end] = chunk['samples']
+                # Replace NaN values in the chunk with sentinel value
+                cursamples = np.where(np.isnan(chunk['samples']), nanval, np.round(chunk['samples'] * chunk['gain']).astype(np.int16)) 
+                samples[start:end] = cursamples
 
             # Create a dataset for each waveform within the root group.
-            ds = root_group.create_dataset(name, data=samples, chunks=True, dtype=np.int16)  
+            ds = root_group.create_dataset(name, data=samples, chunks=True, dtype=np.int16)
             ds.attrs['units'] = waveform['units']
             ds.attrs['samples_per_second'] = waveform['samples_per_second']
+            ds.attrs['nanvalue'] = nanval  # Store the sentinel value for NaN
+            ds.attrs['gain'] = max_gain  # Store the gain
 
     def read_waveforms(self, path, start_time, end_time, signal_names):
         # Open the Zarr group
@@ -35,12 +42,20 @@ class Zarr(BaseFormat):
         for signal_name in signal_names:
             ds = root_group[signal_name]
             samples_per_second = ds.attrs['samples_per_second']
+            nanval = ds.attrs['nanvalue']  # Retrieve the sentinel value for NaN
+            gain = ds.attrs['gain']  # Retrieve the gain
 
             start_sample = round(start_time * samples_per_second)
             end_sample = round(end_time * samples_per_second)
 
             # Random access the Zarr array
-            results[signal_name] = ds[start_sample:end_sample]
+            sig_data = ds[start_sample:end_sample]
+            naninds = (sig_data == nanval)
+            sig_data = sig_data.astype(np.float32)
+            sig_data = sig_data / gain
+            sig_data[naninds] = np.nan
+
+            results[signal_name] = sig_data
 
         return results
     
@@ -54,33 +69,6 @@ class Zarr(BaseFormat):
             output[signal_name] = root_group[signal_name]
         return output
 
-    def read_opened_waveforms(self, opened_files: dict, start_time: float, end_time: float,
-                              signal_names: list):
-        """
-        Read the already opened Zarr waveforms between `start_time` and `end_time`.
-        """
-        results = {}
-        for signal_name in signal_names:
-            ds = opened_files[signal_name]
-
-            # Extract the sampling rate from the attributes of the Zarr dataset
-            fs = ds.attrs['samples_per_second']
-            
-            start_sample = round(start_time * fs)
-            end_sample = round(end_time * fs)
-            
-            # Random access the Zarr array
-            samples = ds[start_sample:end_sample]
-
-            results[signal_name] = samples
-
-        return results
-
-    def close_waveforms(self, opened_files: dict):
-        """
-        Clear references to the opened Zarr files.
-        """
-        opened_files.clear()
 
 class Zarr_compressed(BaseFormat):
     """
@@ -90,23 +78,25 @@ class Zarr_compressed(BaseFormat):
     def write_waveforms(self, path, waveforms):
         # Initialize Zarr group 
         root_group = zarr.open_group(path, mode='w')
+        nanval = -32768  # Sentinel value for NaN
 
         for name, waveform in waveforms.items():
             length = waveform['chunks'][-1]['end_sample']
             samples = np.empty(length, dtype=np.int16)
-            samples[:] = np.nan 
+            samples[:] = nanval
 
             for chunk in waveform['chunks']:
                 start = chunk['start_sample']
                 end = chunk['end_sample']
-                samples[start:end] = chunk['samples']
+                cursamples = np.where(np.isnan(chunk['samples']), nanval, chunk['samples'])
+                samples[start:end] = cursamples
 
-            # each waveform within the root group with compression.
-            ds = root_group.create_dataset(name, data=samples, chunks=True, dtype=np.int16, 
-                                           compressor=zarr.Blosc(cname='zstd', clevel=9, shuffle=zarr.Blosc.BITSHUFFLE)) 
+            # each wavefrom is stored as a dataset within the root group
+            ds = root_group.create_dataset(name, data=samples, chunks=True, dtype=np.int16,
+                                           compressor=zarr.Blosc(cname='zstd', clevel=1, shuffle=zarr.Blosc.BITSHUFFLE))
             ds.attrs['units'] = waveform['units']
             ds.attrs['samples_per_second'] = waveform['samples_per_second']
-
+            ds.attrs['nanvalue'] = nanval  
 
     def read_waveforms(self, path, start_time, end_time, signal_names):
         # Open the Zarr group
@@ -116,11 +106,17 @@ class Zarr_compressed(BaseFormat):
         for signal_name in signal_names:
             ds = root_group[signal_name]
             samples_per_second = ds.attrs['samples_per_second']
-            
+            nanval = ds.attrs['nanvalue']  # Retrieve the sentinel value
+
             start_sample = round(start_time * samples_per_second)
             end_sample = round(end_time * samples_per_second)
 
             # Random access the Zarr array 
-            results[signal_name] = ds[start_sample:end_sample]
+            sig_data = ds[start_sample:end_sample]
+            naninds = (sig_data == nanval)
+            sig_data = sig_data.astype(float) 
+            sig_data[naninds] = np.nan
+
+            results[signal_name] = sig_data
 
         return results
