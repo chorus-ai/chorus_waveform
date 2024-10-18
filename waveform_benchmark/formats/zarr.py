@@ -65,7 +65,49 @@ class Zarr(BaseFormat):
             results[signal_name] = sig_data
 
         return results
-    
+
+    def open_waveforms(self, path: str, signal_names: list, **kwargs):
+        """
+        Open Zarr waveforms for multiple signal names.
+        """
+        output = {}
+        root_group = zarr.open_group(path, mode='r')
+        for signal_name in signal_names:
+            output[signal_name] = root_group[signal_name]
+        return output
+
+    def read_opened_waveforms(self, opened_files: dict, start_time: float, end_time: float, signal_names: list):
+        """
+        Read the already opened Zarr.
+        """
+        results = {}
+
+        for signal_name in signal_names:
+            ds = opened_files[signal_name]
+
+            # Extract the sampling rate and other attributes
+            samples_per_second = ds.attrs['samples_per_second']
+            nanval = ds.attrs['nanvalue']  # Retrieve the sentinel value for NaN
+            gain = ds.attrs['gain']  # Retrieve the gain
+
+            start_sample = round(start_time * samples_per_second)
+            end_sample = round(end_time * samples_per_second)
+
+            sig_data = ds[start_sample:end_sample]
+            naninds = (sig_data == nanval)
+            sig_data = sig_data.astype(np.float32)
+            sig_data = sig_data / gain
+            sig_data[naninds] = np.nan
+            results[signal_name] = sig_data
+
+        return results
+
+    def close_waveforms(self, opened_files: dict):
+        """
+        Clear opened Zarr files.
+        """
+        opened_files.clear()
+
 class Zarr_Compressed(Zarr):
     fmt = 'Compressed'
 
