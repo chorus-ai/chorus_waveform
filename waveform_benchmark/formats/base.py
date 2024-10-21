@@ -27,16 +27,13 @@ class BaseFormat(abc.ABC):
     
     # kwargs is a dictionary that can be used to pass additional arguments to the format
     # replaces the total_length, block_length, and block_size params which are either test specific or intrinsic to the format.
-    @abc.abstractmethod
     def open_waveforms(self, path: str, signal_names:list, **kwargs):
         raise NotImplementedError
 
-    @abc.abstractmethod
     def read_opened_waveforms(self, opened_files: dict, start_time: float, end_time: float,
                              signal_names: list):
         raise NotImplementedError
 
-    @abc.abstractmethod
     def close_waveforms(self, opened_files: dict):
         raise NotImplementedError
       
