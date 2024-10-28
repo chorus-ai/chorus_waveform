@@ -91,6 +91,16 @@ class AtriumDB(BaseFormat):
 
         return results
 
+    def open_waveforms(self, path: str, signal_names:list, **kwargs):
+        raise NotImplementedError
+
+    def read_opened_waveforms(self, opened_files: dict, start_time: float, end_time: float,
+                             signal_names: list):
+        raise NotImplementedError
+
+    def close_waveforms(self, opened_files: dict):
+        raise NotImplementedError
+
 
 class NanAdaptedAtriumDB(AtriumDB):
     """
