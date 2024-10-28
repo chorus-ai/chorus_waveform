@@ -116,7 +116,7 @@ class NanAdaptedAtriumDB(AtriumDB):
             new_measure_id, freq_nhz = measures[signal_name]
 
             _, read_value_data = sdk.get_data(
-                new_measure_id, start_time_nano, end_time_nano, device_id=new_device_id, return_nan_gap=True)
+                new_measure_id, start_time_nano, end_time_nano, device_id=new_device_id, return_nan_filled=True)
 
             results[signal_name] = read_value_data
 
