@@ -1,4 +1,4 @@
-atriumdb==2.4.0
+atriumdb==2.2.4
 h5py==3.10.0
 numpy==1.26.4
 pyarrow==16.0.0
