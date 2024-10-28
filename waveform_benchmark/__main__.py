@@ -121,7 +121,7 @@ def main():
                                                                                 test_list=test_list,
                                                                                 result_list=result_list,
                                                                                 test_only = opts.test_only,
-                                                                                mem_profile = opts.memory_profile)
+                                                                                mem_profile = opts.memory_profiling)
 
         save_summary(format_list, waveform_list, test_list, result_list, opts.waveform_suite_summary_file)
 

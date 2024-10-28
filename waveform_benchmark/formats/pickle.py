@@ -41,7 +41,32 @@ class Pickle(BaseFormat):
         results = {}
         for signal_name in signal_names:
             channel = channels[signal_name]
-            start_sample = round(start_time / channel['samples_per_second'])
-            end_sample = round(end_time / channel['samples_per_second'])
+            start_sample = round(start_time * channel['samples_per_second'])
+            end_sample = round(end_time * channel['samples_per_second'])
             results[signal_name] = channel['samples'][start_sample:end_sample]
+            
+        del channels
         return results
+
+
+    def open_waveforms(self, path: str, signal_names:list, **kwargs):
+        with open(path, 'rb') as f:
+            channels = pickle.load(f)
+
+        return {path: channels}
+
+    def read_opened_waveforms(self, opened_files: dict, start_time: float, end_time: float,
+                              signal_names: list):
+        results = {}
+        
+        for fn, channels in opened_files.items():
+            for signal_name in signal_names:
+                channel = channels[signal_name]
+                start_sample = round(start_time * channel['samples_per_second'])
+                end_sample = round(end_time * channel['samples_per_second'])
+                results[signal_name] = channel['samples'][start_sample:end_sample]
+        return results
+        
+    
+    def close_waveforms(self, opened_files: dict):
+        opened_files.clear()
