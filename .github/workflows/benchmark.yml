@@ -111,9 +111,13 @@ jobs:
 
       - name: Concatenate results
         run: |
-          cat benchmark_results_*.txt > final_results.txt
-          echo "Benchmark results:"
-          cat final_results.txt
+          if ls benchmark_results_*.txt 1> /dev/null 2>&1; then
+            cat benchmark_results_*.txt > final_results.txt
+            echo "Benchmark results:"
+            cat final_results.txt
+          else
+            echo "No benchmarks were run." > final_results.txt
+          fi
 
       - name: Post results to pull request
         uses: actions/github-script@v7
