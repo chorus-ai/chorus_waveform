@@ -92,14 +92,14 @@ class AtriumDB(BaseFormat):
         return results
 
     def open_waveforms(self, path: str, signal_names:list, **kwargs):
-        raise NotImplementedError
+        return {signal_name: np.array([]) for signal_name in signal_names}
 
     def read_opened_waveforms(self, opened_files: dict, start_time: float, end_time: float,
                              signal_names: list):
-        raise NotImplementedError
+        return {signal_name: np.array([]) for signal_name in signal_names}
 
     def close_waveforms(self, opened_files: dict):
-        raise NotImplementedError
+        return
 
 
 class NanAdaptedAtriumDB(AtriumDB):
@@ -133,33 +133,19 @@ class NanAdaptedAtriumDB(AtriumDB):
         return results
 
 def generate_non_nan_slices(start_time_s: float, freq_hz: float, data: np.ndarray):
-    dt = 1.0 / freq_hz
-    non_nan_mask = ~np.isnan(data)
+    indices = np.arange(data.size, dtype=np.int32)
+    values_mask = ~np.isnan(data)
 
-    if len(non_nan_mask) == 0:
+    data = data[values_mask]
+    indices = indices[values_mask]
+
+    if indices.size == 0:
         return
 
-    # Find the start indices of continuous non-NaN slices
-    start_indices = []
-    if non_nan_mask[0]:
-        start_indices.append(0)
-    start_indices.extend(
-        (np.where((~non_nan_mask[:-1]) & (non_nan_mask[1:]))[0] + 1).tolist()
-    )
+    slices = np.concatenate([np.array([0]), np.where(np.diff(indices) > 1)[0] + 1, np.array([indices.shape[0]])])
 
-    # Find the end indices of continuous non-NaN slices
-    end_indices = (
-            np.where((non_nan_mask[:-1]) & (~non_nan_mask[1:]))[0] + 1
-    ).tolist()
-    if non_nan_mask[-1]:
-        end_indices.append(len(non_nan_mask))
-
-    # Convert lists to numpy arrays for efficient indexing
-    start_indices = np.array(start_indices)
-    end_indices = np.array(end_indices)
-
-    # Yield the slices along with their corresponding start times
-    for i0, i1 in zip(start_indices, end_indices):
-        t_i0 = start_time_s + i0 * dt
-        data_slice = data[i0:i1]
-        yield t_i0, data_slice
+    for i in range(slices.size - 1):
+        left_index = slices[i]
+        right_index = slices[i+1]
+        start_time_slice = start_time_s + (indices[left_index] / freq_hz)
+        yield start_time_slice, data[left_index:right_index]
