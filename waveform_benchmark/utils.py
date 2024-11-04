@@ -22,19 +22,18 @@ def median_attr(objects, attr):
 def convert_time_value_pairs_to_nan_array(filedata, waveform, st, et):
     # Write non-nan data onto nan array
     read_time_data, read_value_data = filedata
-    start_time_nano = int(st * (10 ** 9))
     freq_hz = waveform['samples_per_second']
-    start_frame = round(st * freq_hz)
-    end_frame = round(et * freq_hz)
-    num_samples = end_frame - start_frame
-    freq_nano = int(freq_hz * 10 ** 9)
-    period_ns = (10 ** 18) // freq_nano
-    nan_values = np.empty(num_samples, dtype=np.float64)
-    nan_values[:] = np.nan
-    closest_i_array = np.round((read_time_data - start_time_nano) / period_ns).astype(int)
+
+    num_samples = round(et * freq_hz) - round(st * freq_hz)
+    nan_values = np.full(num_samples, np.nan, dtype=np.float64)
+
+    start_time_nano = round(st * (10 ** 9))
+    period_ns = (10 ** 9) / freq_hz
+    closest_i_array = np.round((read_time_data - start_time_nano) / period_ns).astype(np.int64)
+
     # Make sure indices are within bounds
     mask = (closest_i_array >= 0) & (closest_i_array < num_samples)
     closest_i_array = closest_i_array[mask]
     nan_values[closest_i_array] = read_value_data[mask]
-    filedata = nan_values
-    return filedata
+
+    return nan_values

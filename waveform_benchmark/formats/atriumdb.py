@@ -57,8 +57,8 @@ class AtriumDB(BaseFormat):
     def read_waveforms(self, path, start_time, end_time, signal_names):
         assert sdk is not None, "SDK should have been initialized in writing phase"
 
-        start_time_nano = int(start_time * (10 ** 9))
-        end_time_nano = int(end_time * (10 ** 9))
+        start_time_nano = start_time * (10 ** 9)
+        end_time_nano = end_time * (10 ** 9)
 
         measures = {measure['tag']: (measure['id'], measure['freq_nhz']) for _, measure in sdk._measures.items()}
         new_device_id = sdk.get_device_id("chorus")
@@ -72,7 +72,7 @@ class AtriumDB(BaseFormat):
         for signal_name in signal_names:
             new_measure_id, freq_nhz = measures[signal_name]
 
-            _, read_time_data, read_value_data = sdk.get_data(new_measure_id, start_time_nano, end_time_nano, device_id=new_device_id, sort=False)
+            _, read_time_data, read_value_data = sdk.get_data(new_measure_id, round(start_time_nano), round(end_time_nano), device_id=new_device_id, sort=False)
 
             if read_value_data.size == 0:
                 freq_hz = freq_nhz / (10 ** 9)
@@ -84,8 +84,11 @@ class AtriumDB(BaseFormat):
                 continue
 
             # Truncate unneeded values.
-            left = np.searchsorted(read_time_data, start_time_nano, side='left')
-            right = np.searchsorted(read_time_data, end_time_nano, side='left')
+            period_ns = (10**18 / freq_nhz)
+            half_period_ns = period_ns / 2
+            left = np.searchsorted(read_time_data, start_time_nano - half_period_ns, side='left')
+            right = np.searchsorted(read_time_data, end_time_nano + half_period_ns, side='left')
+
             read_time_data, read_value_data = read_time_data[left:right], read_value_data[left:right]
 
             results[signal_name] = (read_time_data, read_value_data)
@@ -153,8 +156,11 @@ class AtriumDB(BaseFormat):
                 start_time_n=start_time_nano, end_time_n=end_time_nano)
 
             # Truncate unneeded values.
-            left = np.searchsorted(read_time_data, start_time_nano, side='left')
-            right = np.searchsorted(read_time_data, end_time_nano, side='left')
+            period_ns = (10**18 / freq_nhz)
+            half_period_ns = period_ns / 2
+            left = np.searchsorted(read_time_data, start_time_nano - half_period_ns, side='left')
+            right = np.searchsorted(read_time_data, end_time_nano + half_period_ns, side='left')
+
             read_time_data, read_value_data = read_time_data[left:right], read_value_data[left:right]
 
             results[signal_name] = (read_time_data, read_value_data)
