@@ -2,6 +2,12 @@
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+package-dir = {"" = "waveform_benchmark"}
+
+[tool.setuptools.packages]
+find = { where = ["waveform_benchmark"] }
+
 [project]
 name = "chorus_waveform"
 version = "1.0.0"
