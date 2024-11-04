@@ -84,10 +84,11 @@ class AtriumDB(BaseFormat):
                 continue
 
             # Truncate unneeded values.
-            period_ns = (10**18 / freq_nhz)
-            half_period_ns = period_ns / 2
-            left = np.searchsorted(read_time_data, start_time_nano - half_period_ns, side='left')
-            right = np.searchsorted(read_time_data, end_time_nano + half_period_ns, side='left')
+            left = np.searchsorted(read_time_data, start_time_nano, side='left')
+            right = np.searchsorted(read_time_data, end_time_nano, side='left')
+
+            if left > 0 and start_time_nano < read_time_data[left]:
+                left -= 1
 
             read_time_data, read_value_data = read_time_data[left:right], read_value_data[left:right]
 
@@ -156,10 +157,11 @@ class AtriumDB(BaseFormat):
                 start_time_n=start_time_nano, end_time_n=end_time_nano)
 
             # Truncate unneeded values.
-            period_ns = (10**18 / freq_nhz)
-            half_period_ns = period_ns / 2
-            left = np.searchsorted(read_time_data, start_time_nano - half_period_ns, side='left')
-            right = np.searchsorted(read_time_data, end_time_nano + half_period_ns, side='left')
+            left = np.searchsorted(read_time_data, start_time_nano, side='left')
+            right = np.searchsorted(read_time_data, end_time_nano, side='left')
+
+            if left > 0 and start_time_nano < read_time_data[left]:
+                left -= 1
 
             read_time_data, read_value_data = read_time_data[left:right], read_value_data[left:right]
 
