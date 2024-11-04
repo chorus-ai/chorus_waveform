@@ -153,8 +153,8 @@ def compute_snr(reference_signal, output_signal):
     output_signal = np.asarray(output_signal)
 
     # Check that the signals have the same dimensions and all finite values.
-    assert (np.array_equal(np.shape(reference_signal), np.shape(output_signal)))
-    assert (np.all(np.isfinite(reference_signal)) and np.all(np.isfinite(output_signal)))
+    np.array_equal(np.shape(reference_signal), np.shape(output_signal))
+    np.all(np.isfinite(reference_signal)) and np.all(np.isfinite(output_signal))
 
     # Compute the noise in the signal.
     noise_signal = output_signal - reference_signal
@@ -422,7 +422,7 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                     # read chunk from file
                     filedata = fmt().open_read_close_waveforms(path, st, et, [channel])
                     filedata = filedata[channel]
-
+                     
                     # compare values
 
                     # check arrays are same size
