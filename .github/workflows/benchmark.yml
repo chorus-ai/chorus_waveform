@@ -119,20 +119,21 @@ jobs:
             echo "No benchmarks were run." > final_results.txt
           fi
 
-      - name: Post results to pull request
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const filePath = 'final_results.txt';
-            if (!fs.existsSync(filePath) || fs.statSync(filePath).size === 0) {
-              console.log("No results to post.");
-              return;
-            }
-            const resultContent = fs.readFileSync(filePath, 'utf8');
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: `Benchmark results:\n\`\`\`\n${resultContent}\n\`\`\``
-            });
+      # Requires private TOKEN to be added to run on PRS from external repos
+      # - name: Post results to pull request
+      #   uses: actions/github-script@v7
+      #   with:
+      #     script: |
+      #       const fs = require('fs');
+      #       const filePath = 'final_results.txt';
+      #       if (!fs.existsSync(filePath) || fs.statSync(filePath).size === 0) {
+      #         console.log("No results to post.");
+      #         return;
+      #       }
+      #       const resultContent = fs.readFileSync(filePath, 'utf8');
+      #       await github.rest.issues.createComment({
+      #         owner: context.repo.owner,
+      #         repo: context.repo.repo,
+      #         issue_number: context.issue.number,
+      #         body: `Benchmark results:\n\`\`\`\n${resultContent}\n\`\`\``
+      #       });
