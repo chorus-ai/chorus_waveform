@@ -1,11 +1,14 @@
 import bisect
+from collections import defaultdict
 from pathlib import Path
 import pickle
+import itertools
 
 import numpy as np
 from waveform_benchmark.formats.base import BaseFormat
 
 from atriumdb import AtriumSDK
+from atriumdb.adb_functions import condense_byte_read_list
 
 sdk: AtriumSDK = None
 
@@ -54,8 +57,8 @@ class AtriumDB(BaseFormat):
     def read_waveforms(self, path, start_time, end_time, signal_names):
         assert sdk is not None, "SDK should have been initialized in writing phase"
 
-        start_time_nano = int(start_time * (10 ** 9))
-        end_time_nano = int(end_time * (10 ** 9))
+        start_time_nano = start_time * (10 ** 9)
+        end_time_nano = end_time * (10 ** 9)
 
         measures = {measure['tag']: (measure['id'], measure['freq_nhz']) for _, measure in sdk._measures.items()}
         new_device_id = sdk.get_device_id("chorus")
@@ -69,27 +72,105 @@ class AtriumDB(BaseFormat):
         for signal_name in signal_names:
             new_measure_id, freq_nhz = measures[signal_name]
 
-            _, read_time_data, read_value_data = sdk.get_data(new_measure_id, start_time_nano, end_time_nano, device_id=new_device_id, sort=False)
+            _, read_time_data, read_value_data = sdk.get_data(new_measure_id, round(start_time_nano), round(end_time_nano), device_id=new_device_id, sort=False)
 
             if read_value_data.size == 0:
                 freq_hz = freq_nhz / (10 ** 9)
                 start_frame = round(start_time * freq_hz)
                 end_frame = round(end_time * freq_hz)
                 num_samples = end_frame - start_frame
-                nan_values = np.empty(num_samples, dtype=np.float32)
-                if num_samples > 0:
-                    nan_values[:] = np.nan
-                results[signal_name] = nan_values
+
+                results[signal_name] = np.full(num_samples, np.nan, dtype=np.float32)
                 continue
 
             # Truncate unneeded values.
             left = np.searchsorted(read_time_data, start_time_nano, side='left')
             right = np.searchsorted(read_time_data, end_time_nano, side='left')
+
+            if left > 0 and start_time_nano < read_time_data[left]:
+                left -= 1
+
             read_time_data, read_value_data = read_time_data[left:right], read_value_data[left:right]
 
             results[signal_name] = (read_time_data, read_value_data)
 
         return results
+
+    def open_waveforms(self, path: str, signal_names: list, **kwargs):
+        # Strategy: Store Compressed Files In Memory
+        device_id = sdk.get_device_id("chorus")
+        measures = {measure['tag']: (measure['id'], measure['freq_nhz']) for _, measure in sdk._measures.items()}
+
+        # If the block metadata hasn't been read, read them.
+        if len(sdk.block_cache) == 0:
+            sdk.load_device(device_id)
+
+        # load compressed tsc files into memory:
+        result = defaultdict(dict)
+        for signal_name in signal_names:
+            measure_id, freq_nhz = measures[signal_name]
+            block_array = sdk.block_cache.get(measure_id, {}).get(device_id, [])
+
+            # Group rows by file_id, preserving the order within each group
+            for file_id, group in itertools.groupby(block_array, key=lambda row: row[3]):
+                grouped_rows = list(group)
+
+                # read the tsc file
+                read_list = condense_byte_read_list(grouped_rows)
+                encoded_bytes = sdk.file_api.read_file_list(read_list, sdk.filename_dict)
+                result[signal_name][int(file_id)] = encoded_bytes
+
+        return result
+
+    def read_opened_waveforms(self, opened_files: dict, start_time: float, end_time: float,
+                              signal_names: list):
+        assert sdk is not None, "SDK should have been initialized in writing phase"
+
+        start_time_nano = int(start_time * (10 ** 9))
+        end_time_nano = int(end_time * (10 ** 9))
+
+        measures = {measure['tag']: (measure['id'], measure['freq_nhz']) for _, measure in sdk._measures.items()}
+        device_id = sdk.get_device_id("chorus")
+
+        # Read Data
+        results = {}
+        for signal_name in signal_names:
+            measure_id, freq_nhz = measures[signal_name]
+
+            block_array = sdk.find_blocks(measure_id, device_id, start_time_nano, end_time_nano)
+
+            if len(block_array) == 0:
+                freq_hz = freq_nhz / (10 ** 9)
+                start_frame = round(start_time * freq_hz)
+                end_frame = round(end_time * freq_hz)
+                num_samples = end_frame - start_frame
+
+                results[signal_name] = np.full(num_samples, np.nan, dtype=np.float32)
+                continue
+
+            read_list = condense_byte_read_list(block_array)
+            num_bytes_list = [row[5] for row in block_array]
+            encoded_bytes = get_encoded_bytes_from_memory(opened_files[signal_name], read_list)
+
+            read_time_data, read_value_data, _ = sdk.block.decode_blocks(
+                encoded_bytes, num_bytes_list, analog=True, time_type=1, return_nan_gap=False,
+                start_time_n=start_time_nano, end_time_n=end_time_nano)
+
+            # Truncate unneeded values.
+            left = np.searchsorted(read_time_data, start_time_nano, side='left')
+            right = np.searchsorted(read_time_data, end_time_nano, side='left')
+
+            if left > 0 and start_time_nano < read_time_data[left]:
+                left -= 1
+
+            read_time_data, read_value_data = read_time_data[left:right], read_value_data[left:right]
+
+            results[signal_name] = (read_time_data, read_value_data)
+
+        return results
+
+    def close_waveforms(self, opened_files: dict):
+        return
 
 
 class NanAdaptedAtriumDB(AtriumDB):
@@ -116,40 +197,77 @@ class NanAdaptedAtriumDB(AtriumDB):
             new_measure_id, freq_nhz = measures[signal_name]
 
             _, read_value_data = sdk.get_data(
-                new_measure_id, start_time_nano, end_time_nano, device_id=new_device_id, return_nan_gap=True)
+                new_measure_id, start_time_nano, end_time_nano, device_id=new_device_id, return_nan_filled=True)
 
             results[signal_name] = read_value_data
 
         return results
 
-def generate_non_nan_slices(start_time_s: float, freq_hz: float, data: np.ndarray):
-    dt = 1.0 / freq_hz
-    non_nan_mask = ~np.isnan(data)
+    def read_opened_waveforms(self, opened_files: dict, start_time: float, end_time: float,
+                              signal_names: list):
+        assert sdk is not None, "SDK should have been initialized in writing phase"
 
-    if len(non_nan_mask) == 0:
+        start_time_nano = int(start_time * (10 ** 9))
+        end_time_nano = int(end_time * (10 ** 9))
+
+        measures = {measure['tag']: (measure['id'], measure['freq_nhz']) for _, measure in sdk._measures.items()}
+        device_id = sdk.get_device_id("chorus")
+
+        # Read Data
+        results = {}
+        for signal_name in signal_names:
+            measure_id, freq_nhz = measures[signal_name]
+
+            block_array = sdk.find_blocks(measure_id, device_id, start_time_nano, end_time_nano)
+
+            if len(block_array) == 0:
+                freq_hz = freq_nhz / (10 ** 9)
+                start_frame = round(start_time * freq_hz)
+                end_frame = round(end_time * freq_hz)
+                num_samples = end_frame - start_frame
+
+                results[signal_name] = np.full(num_samples, np.nan, dtype=np.float32)
+                continue
+
+            read_list = condense_byte_read_list(block_array)
+            num_bytes_list = [row[5] for row in block_array]
+            encoded_bytes = get_encoded_bytes_from_memory(opened_files[signal_name], read_list)
+
+            _, read_value_data = sdk.block.decode_blocks(
+                encoded_bytes, num_bytes_list, analog=True, time_type=1, return_nan_gap=True,
+                start_time_n=start_time_nano, end_time_n=end_time_nano)
+
+            results[signal_name] = read_value_data
+
+        return results
+
+
+def generate_non_nan_slices(start_time_s: float, freq_hz: float, data: np.ndarray):
+    indices = np.arange(data.size, dtype=np.int32)
+    values_mask = ~np.isnan(data)
+
+    data = data[values_mask]
+    indices = indices[values_mask]
+
+    if indices.size == 0:
         return
 
-    # Find the start indices of continuous non-NaN slices
-    start_indices = []
-    if non_nan_mask[0]:
-        start_indices.append(0)
-    start_indices.extend(
-        (np.where((~non_nan_mask[:-1]) & (non_nan_mask[1:]))[0] + 1).tolist()
-    )
+    slices = np.concatenate([np.array([0]), np.where(np.diff(indices) > 1)[0] + 1, np.array([indices.shape[0]])])
 
-    # Find the end indices of continuous non-NaN slices
-    end_indices = (
-            np.where((non_nan_mask[:-1]) & (~non_nan_mask[1:]))[0] + 1
-    ).tolist()
-    if non_nan_mask[-1]:
-        end_indices.append(len(non_nan_mask))
+    for i in range(slices.size - 1):
+        left_index = slices[i]
+        right_index = slices[i+1]
+        start_time_slice = start_time_s + (indices[left_index] / freq_hz)
+        yield start_time_slice, data[left_index:right_index]
 
-    # Convert lists to numpy arrays for efficient indexing
-    start_indices = np.array(start_indices)
-    end_indices = np.array(end_indices)
 
-    # Yield the slices along with their corresponding start times
-    for i0, i1 in zip(start_indices, end_indices):
-        t_i0 = start_time_s + i0 * dt
-        data_slice = data[i0:i1]
-        yield t_i0, data_slice
+def get_encoded_bytes_from_memory(binary_data_dict, read_list):
+    result = np.empty(sum([num_bytes for _, _, _, _, num_bytes in read_list]), dtype=np.uint8)
+
+    running_index = 0
+    for measure_id, device_id, file_id, start_byte, num_bytes in read_list:
+        result[running_index:running_index + num_bytes] = binary_data_dict[int(file_id)][
+                                                          start_byte:start_byte + num_bytes]
+        running_index += num_bytes
+
+    return result

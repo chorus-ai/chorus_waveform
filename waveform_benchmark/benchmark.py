@@ -425,6 +425,10 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
 
                     # compare values
 
+                    # Check if the filedata is in time-value pair format
+                    if isinstance(filedata, tuple):
+                        filedata = convert_time_value_pairs_to_nan_array(filedata, waveform, st, et)
+
                     # check arrays are same size
                     if data.shape != filedata.shape:
                         print(f"{i_ch:^5}\t --- Different shapes (input: {data.shape}, file: {filedata.shape}) ---")
