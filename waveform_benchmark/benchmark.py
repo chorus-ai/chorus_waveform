@@ -151,6 +151,9 @@ def compute_snr(reference_signal, output_signal):
     # Convert the data to NumPy arrays as needed.
     reference_signal = np.asarray(reference_signal)
     output_signal = np.asarray(output_signal)
+    
+    # Check that the signals have the same dimensions.
+    assert (np.array_equal(np.shape(reference_signal), np.shape(output_signal)))
 
     # Compute the noise in the signal.
     noise_signal = output_signal - reference_signal
@@ -418,7 +421,7 @@ def run_benchmarks(input_record, format_class, pn_dir=None, format_list=None, wa
                     # read chunk from file
                     filedata = fmt().open_read_close_waveforms(path, st, et, [channel])
                     filedata = filedata[channel]
-                     
+                    
                     # compare values
 
                     # check arrays are same size
