@@ -152,10 +152,6 @@ def compute_snr(reference_signal, output_signal):
     reference_signal = np.asarray(reference_signal)
     output_signal = np.asarray(output_signal)
 
-    # Check that the signals have the same dimensions and all finite values.
-    np.array_equal(np.shape(reference_signal), np.shape(output_signal))
-    np.all(np.isfinite(reference_signal)) and np.all(np.isfinite(output_signal))
-
     # Compute the noise in the signal.
     noise_signal = output_signal - reference_signal
 
