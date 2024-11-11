@@ -20,7 +20,7 @@ class AtriumDB(BaseFormat):
     def write_waveforms(self, path, waveforms):
         # Create a new local dataset using SQLite
         global sdk
-        if sdk is None:
+        if sdk is None or path != sdk.dataset_location:
             sdk = AtriumSDK.create_dataset(dataset_location=path)
             sdk = AtriumSDK(dataset_location=path, num_threads=1)
             sdk.block.block_size = 16384
