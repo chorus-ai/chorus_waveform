@@ -113,4 +113,3 @@ class Zarr_Compressed(BaseZarr):
 
 class Zarr_Uncompressed(BaseZarr):
     fmt = 'Uncompressed'
-    
