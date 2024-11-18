@@ -7,7 +7,7 @@ from waveform_benchmark.formats.base import BaseFormat
 
 ROW_GROUP_SIZE_IN_SECONDS = 500
 
-class Parquet(BaseFormat):
+class BaseParquet(BaseFormat):
     """
     Example format using Parquet with chunked signals with row group size.
     """
@@ -165,10 +165,10 @@ class Parquet(BaseFormat):
         open_files.clear()
 
 
-class Parquet_Compressed(Parquet):
+class Parquet_Compressed(BaseParquet):
     fmt = 'Compressed'
 
-class Parquet_Uncompressed(Parquet):
+class Parquet_Uncompressed(BaseParquet):
     fmt = 'Uncompressed'
 
 # class Parquet(BaseFormat):

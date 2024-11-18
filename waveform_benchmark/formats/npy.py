@@ -1,7 +1,7 @@
 import numpy
 from waveform_benchmark.formats.base import BaseFormat
 
-class NPY(BaseFormat):
+class BaseNPY(BaseFormat):
     """
     Example format using NPY.
     """
@@ -87,8 +87,8 @@ class NPY(BaseFormat):
     def close_waveforms(self, opened_files: dict):
         opened_files.clear()
 
-class NPY_Compressed(NPY):
+class NPY_Compressed(BaseNPY):
     fmt = 'Compressed'
 
-class NPY_Uncompressed(NPY):
+class NPY_Uncompressed(BaseNPY):
     fmt = 'Uncompressed'

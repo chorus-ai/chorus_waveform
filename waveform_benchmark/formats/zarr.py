@@ -2,7 +2,7 @@ import numpy as np
 import zarr
 from waveform_benchmark.formats.base import BaseFormat
 
-class Zarr(BaseFormat):
+class BaseZarr(BaseFormat):
     """
     Example format using Zarr with 16-bit integer waveforms.
     """
@@ -108,8 +108,8 @@ class Zarr(BaseFormat):
         """
         opened_files.clear()
 
-class Zarr_Compressed(Zarr):
+class Zarr_Compressed(BaseZarr):
     fmt = 'Compressed'
 
-class Zarr_Uncompressed(Zarr):
+class Zarr_Uncompressed(BaseZarr):
     fmt = 'Uncompressed'
