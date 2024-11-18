@@ -22,7 +22,7 @@ class Zarr(BaseFormat):
                 start = chunk['start_sample']
                 end = chunk['end_sample']
                 # Replace NaN values in the chunk with sentinel value
-                cursamples = np.where(np.isnan(chunk['samples']), nanval, np.round(chunk['samples'] * chunk['gain']).astype(np.int16)) 
+                cursamples = np.where(np.isnan(chunk['samples']), nanval, np.round(chunk['samples'] * chunk['gain'])).astype(np.int16)
                 samples[start:end] = cursamples
 
             if self.fmt == 'Compressed':
