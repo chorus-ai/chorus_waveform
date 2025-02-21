@@ -16,14 +16,16 @@ class AtriumDB(BaseFormat):
     """
     AtriumDB, a time-indexed medical waveform database.
     """
+    num_threads = 1
+    num_values_per_block = 16384
 
     def write_waveforms(self, path, waveforms):
         # Create a new local dataset using SQLite
         global sdk
         if sdk is None or path != sdk.dataset_location:
             sdk = AtriumSDK.create_dataset(dataset_location=path)
-            sdk = AtriumSDK(dataset_location=path, num_threads=1)
-            sdk.block.block_size = 16384
+            sdk = AtriumSDK(dataset_location=path, num_threads=self.num_threads)
+            sdk.block.block_size = self.num_values_per_block
 
         device_tag = "chorus"
         chorus_device_id = sdk.insert_device(device_tag=device_tag)
@@ -240,6 +242,14 @@ class NanAdaptedAtriumDB(AtriumDB):
             results[signal_name] = read_value_data
 
         return results
+
+
+class AtriumDBMultiThreading(AtriumDB):
+    num_threads = 40
+
+
+class NanAdaptedAtriumDBMultiThreading(NanAdaptedAtriumDB):
+    num_threads = 40
 
 
 def generate_non_nan_slices(start_time_s: float, freq_hz: float, data: np.ndarray):
