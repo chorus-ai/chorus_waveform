@@ -1,0 +1,60 @@
+# setup via:
+# 1. pip install -e .
+
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "central_wfs"
+version = "0.1.0"
+description = "Central ingestion, gap correction, and WFDB conversion pipeline for heterogeneous medical waveform data."
+authors = [
+    { name = "u", email = "u@site.edu" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    
+    # SCIENTIFIC COMPUTING
+    "numpy",
+    "scipy",
+    "pandas",
+    "polars",
+    
+    # DATA FORMATS
+    "pyyaml", # config: YAML
+    "h5py",
+    "wfdb",
+    "pyarrow",
+    "pydicom",
+
+    "pyedflib", # EDF, BDF, EDF+
+    "mne",
+    
+    # CONFIG & VALIDATION
+    "pydantic>=2",
+    
+    # CLI / UTILITY / LOGGING
+    "click",
+    "tqdm",
+    "rich",
+    "memory_profiler",
+]
+
+# OPTIONAL DEPENDENCIES BY DOMAIN
+[project.optional-dependencies]
+testing = ["pytest", "pytest-cov"]
+dev = ["black", "ruff", "mypy"]
+plotting = ["matplotlib"]
+excel = ["openpyxl"]
+
+# CONSOLE ENTRYPOINT(S) FOR CLI
+[project.scripts]
+ingest = "src.__main__:main"
+
+# SETUP TOOLS
+[tool.setuptools.packages.find]
+where = ["src"]

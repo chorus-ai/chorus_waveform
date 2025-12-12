@@ -1,0 +1,39 @@
+# setup:
+# 1. mamba env create -f environment.yml
+# 2. mamba activate central_wfs
+
+name: central_wfs
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+
+  # SCIENTIFIC COMPUTING
+  - numpy
+  - scipy
+  - pandas
+  - polars
+  - pyarrow
+
+  # DATA FORMATS
+  - h5py
+  - mne
+  - pyedflib
+  - pyyaml
+  - pydicom
+
+  # SUPPORT TOOLING
+  - click
+  - tqdm
+  - rich
+  - memory_profiler
+
+  - pip
+
+  # SAFER WITH PIP
+  - pip:
+      - wfdb
+      - pydantic>=2
+      - -e .
